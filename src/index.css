@@ -1,0 +1,41 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #111317;
+  color: #dfe2e7;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+a {
+  color: #f0b44c;
+}
+a:hover {
+  color: #ffd08a;
+}
+button {
+  font-family: inherit;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b3038;
+  border-radius: 4px;
+}
+
+/* Hover states the design specifies via style-hover. */
+.vw-btn-primary:hover {
+  background: #ffc766 !important;
+}
+.vw-btn-secondary:hover {
+  background: #262b33 !important;
+}
+.vw-remove:hover {
+  color: #ff6b6b !important;
+}

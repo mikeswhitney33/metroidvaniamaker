@@ -1,0 +1,127 @@
+import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { C, SANS } from '../ui';
+
+const STORAGE_PREFIX = 'vaultwright.image-slot.';
+
+function load(id: string): string | null {
+  try {
+    return localStorage.getItem(STORAGE_PREFIX + id);
+  } catch {
+    return null;
+  }
+}
+
+function save(id: string, dataUrl: string | null) {
+  try {
+    if (dataUrl) localStorage.setItem(STORAGE_PREFIX + id, dataUrl);
+    else localStorage.removeItem(STORAGE_PREFIX + id);
+  } catch {
+    // Storage full or blocked: the image still shows for this session.
+  }
+}
+
+/**
+ * User-fillable image placeholder: drop an image on it or click to browse.
+ * The chosen image is kept per `id` in localStorage.
+ */
+export function ImageSlot({ id, placeholder, radius = 5 }: { id: string; placeholder: string; radius?: number }) {
+  const [src, setSrc] = useState<string | null>(() => load(id));
+  const [over, setOver] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => save(id, src), [id, src]);
+
+  const read = (file: File | undefined) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => setSrc(typeof reader.result === 'string' ? reader.result : null);
+    reader.readAsDataURL(file);
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setOver(false);
+    read(e.dataTransfer.files[0]);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={src ? `${placeholder} reference image. Click to replace` : `Add ${placeholder} reference image`}
+      onClick={() => input.current?.click()}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={onDrop}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        borderRadius: radius,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        background: over ? 'rgba(240,180,76,.1)' : 'rgba(127,127,127,.08)',
+        border: src ? `1px solid ${C.line}` : `1.5px dashed ${over ? C.accent : 'rgba(223,226,231,.35)'}`,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        color: C.text,
+        font: `500 12px ${SANS}`,
+      }}
+    >
+      {src ? (
+        <>
+          <img src={src} alt={placeholder} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <button
+            aria-label={`Clear ${placeholder} image`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSrc(null);
+            }}
+            style={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              border: 0,
+              background: 'rgba(17,19,23,.8)',
+              color: C.text,
+              font: `400 12px/18px ${SANS}`,
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            ×
+          </button>
+        </>
+      ) : (
+        <>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ opacity: 0.45 }}>
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <circle cx="9" cy="10" r="2" />
+            <path d="M21 16l-5-5-9 9" />
+          </svg>
+          <span style={{ opacity: 0.75 }}>{placeholder}</span>
+        </>
+      )}
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          read(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}

@@ -1,0 +1,262 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Game, type GameInput } from '../game/Game';
+import { analyze, autoPlaceKeys, colorOf, indexNodes, isKey, nextSeed } from '../model/graph';
+import { presetById } from '../model/sampleProject';
+import type { Room } from '../model/types';
+import { AuthorSidebar } from './components/AuthorSidebar';
+import { GenerateDialog } from './components/GenerateDialog';
+import { InspectorPanel } from './components/InspectorPanel';
+import { MapBoard } from './components/MapBoard';
+import { PlaytestPanel } from './components/PlaytestPanel';
+import { PlaytestSidebar } from './components/PlaytestSidebar';
+import { PlaytestView } from './components/PlaytestView';
+import { StatusBar } from './components/StatusBar';
+import { Toast } from './components/Toast';
+import { TopBar } from './components/TopBar';
+import { EditorContext, type EditorApi } from './context';
+import { initialState, type EditorState, type Tool } from './state';
+import { C } from './ui';
+
+export interface EditorProps {
+  /** Jump impulse in tiles per second used by the playtest. */
+  jumpPower?: number;
+  /** Hatch rooms the validator can't reach. */
+  hatchUnreachable?: boolean;
+}
+
+const TOOL_KEYS: Record<string, Tool> = { KeyV: 'select', KeyB: 'draw', KeyE: 'erase' };
+
+export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps) {
+  const [state, setState] = useState<EditorState>(initialState);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gameRef = useRef<Game | null>(null);
+  const held = useRef(new Set<string>());
+  const pressed = useRef(new Set<GameInput>());
+  const toastTimer = useRef<number | undefined>(undefined);
+  const genTimer = useRef<number | undefined>(undefined);
+
+  const set: EditorApi['set'] = useCallback((patch) => {
+    setState((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }));
+  }, []);
+
+  const edit: EditorApi['edit'] = useCallback((patch) => {
+    setState((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch), rev: s.rev + 1 }));
+  }, []);
+
+  const flash = useCallback(
+    (msg: string) => {
+      window.clearTimeout(toastTimer.current);
+      set({ toast: msg });
+      toastTimer.current = window.setTimeout(() => set({ toast: null }), 2200);
+    },
+    [set],
+  );
+
+  const addLog = useCallback((msg: string) => {
+    const t = gameRef.current?.clock() ?? '00:00';
+    setState((s) => ({ ...s, log: [{ t, msg }, ...s.log].slice(0, 12) }));
+  }, []);
+
+  const startPlay = useCallback(() => {
+    const S = stateRef.current;
+    if (!S.rooms.length) return;
+    const byId = indexNodes(S.nodes);
+    const game = new Game(S.rooms, S.nodes, byId, presetById(S.style), jumpPower, {
+      onEnterRoom(room: Room) {
+        setState((s) => ({
+          ...s,
+          playRoom: room.id,
+          visited: s.visited.includes(room.id) ? s.visited : [...s.visited, room.id],
+        }));
+        addLog(`Entered ${room.name}`);
+      },
+      onPickup(item, have) {
+        set({ have });
+        addLog(`Picked up ${item.label}`);
+        flash(`Picked up ${item.label}`);
+      },
+      onWin(boss) {
+        addLog(`Reached ${boss.label}. Run complete`);
+        flash(`${boss.label} reached. The build is beatable`);
+      },
+    });
+    gameRef.current = game;
+    held.current.clear();
+    pressed.current.clear();
+    set({
+      mode: 'play',
+      playRoom: game.room.id,
+      visited: [game.room.id],
+      have: [],
+      log: [{ t: '00:00', msg: `Spawned in ${game.room.name}` }],
+    });
+  }, [jumpPower, addLog, flash, set]);
+
+  const restart = useCallback(() => {
+    if (stateRef.current.mode === 'play') startPlay();
+  }, [startPlay]);
+
+  const generate = useCallback(() => {
+    const S = stateRef.current;
+    const a = analyze(S.rooms, S.nodes);
+    if (a.errors) {
+      set({ gen: { blocked: true, errors: a.errors } });
+      return;
+    }
+    if (S.builtRev === S.rev) {
+      startPlay();
+      return;
+    }
+    window.clearInterval(genTimer.current);
+    let pct = 0;
+    set({ gen: { blocked: false, pct } });
+    genTimer.current = window.setInterval(() => {
+      pct = Math.min(100, pct + 2.2);
+      set({ gen: { blocked: false, pct } });
+      if (pct >= 100) {
+        window.clearInterval(genTimer.current);
+        window.setTimeout(() => {
+          setState((s) => ({ ...s, gen: null, builtRev: s.rev }));
+          startPlay();
+        }, 350);
+      }
+    }, 70);
+  }, [set, startPlay]);
+
+  // Keyboard: tool shortcuts while authoring, controls while playtesting.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent, down: boolean) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (stateRef.current.mode === 'play') {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
+        if (down) {
+          held.current.add(e.code);
+          if (!e.repeat) {
+            if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) pressed.current.add('jump');
+            if (['ShiftLeft', 'ShiftRight', 'KeyK'].includes(e.code)) pressed.current.add('dash');
+            if (e.code === 'KeyR') restart();
+          }
+        } else held.current.delete(e.code);
+      } else if (down && !e.metaKey && !e.ctrlKey) {
+        const tool = TOOL_KEYS[e.code];
+        if (tool) set({ tool });
+      }
+    };
+    const kd = (e: KeyboardEvent) => onKey(e, true);
+    const ku = (e: KeyboardEvent) => onKey(e, false);
+    window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
+    return () => {
+      window.removeEventListener('keydown', kd);
+      window.removeEventListener('keyup', ku);
+    };
+  }, [restart, set]);
+
+  // Playtest loop.
+  useEffect(() => {
+    if (state.mode !== 'play') return;
+    let raf = 0;
+    let last = 0;
+    const loop = (t: number) => {
+      const game = gameRef.current;
+      if (game) {
+        const dt = last ? Math.min(0.033, (t - last) / 1000) : 0.016;
+        game.step(dt, held.current, pressed.current);
+        pressed.current.clear();
+        if (canvasRef.current) game.draw(canvasRef.current);
+      }
+      last = t;
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [state.mode]);
+
+  useEffect(
+    () => () => {
+      window.clearInterval(genTimer.current);
+      window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
+  const analysis = useMemo(() => analyze(state.rooms, state.nodes), [state.rooms, state.nodes]);
+  const byId = useMemo(() => indexNodes(state.nodes), [state.nodes]);
+  const roomById = useMemo(() => Object.fromEntries(state.rooms.map((r) => [r.id, r])), [state.rooms]);
+  const stepOf = useMemo(() => Object.fromEntries(analysis.order.map((id, i) => [id, i + 1])), [analysis]);
+
+  const api: EditorApi = {
+    state,
+    analysis,
+    byId,
+    roomById,
+    stepOf,
+    palette: presetById(state.style),
+    hatchUnreachable,
+    canvasRef,
+    colorOf: (n) => colorOf(n, byId),
+    set,
+    edit,
+    flash,
+    place(nodeId, roomId) {
+      const n = byId[nodeId];
+      const r = roomById[roomId];
+      if (!n || !r) return;
+      edit((s) => ({ nodes: s.nodes.map((x) => (x.id === nodeId ? { ...x, room: roomId } : x)), selNode: nodeId }));
+      flash(`Placed ${n.label} in ${r.name}`);
+    },
+    unplace(nodeId) {
+      edit((s) => ({ nodes: s.nodes.map((x) => (x.id === nodeId ? { ...x, room: null } : x)) }));
+    },
+    deleteRoom(roomId) {
+      edit((s) => ({
+        rooms: s.rooms.filter((r) => r.id !== roomId),
+        nodes: s.nodes.map((n) => (n.room === roomId ? { ...n, room: null } : n)),
+        selRoom: null,
+      }));
+    },
+    autoPlace() {
+      const seed = nextSeed(state.seed);
+      edit({ nodes: autoPlaceKeys(state.rooms, state.nodes, seed), seed });
+      flash(`Placed ${state.nodes.filter(isKey).length} keys along the gate order · seed ${seed}`);
+    },
+    generate,
+    restart,
+    openIssue(issue) {
+      set((s) => ({ mode: 'author', selRoom: issue.room ?? s.selRoom, selNode: issue.node ?? s.selNode }));
+    },
+  };
+
+  const author = state.mode === 'author';
+  return (
+    <EditorContext.Provider value={api}>
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg, overflow: 'hidden' }}>
+        <TopBar />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          {author ? <AuthorSidebar /> : <PlaytestSidebar />}
+          <main
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              background: C.bg,
+              overflow: 'hidden',
+            }}
+          >
+            {author ? <MapBoard /> : <PlaytestView />}
+            {state.toast && <Toast message={state.toast} />}
+          </main>
+          {author ? <InspectorPanel /> : <PlaytestPanel />}
+        </div>
+        <StatusBar />
+        {state.gen && <GenerateDialog />}
+      </div>
+    </EditorContext.Provider>
+  );
+}
