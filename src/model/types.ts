@@ -6,6 +6,8 @@ export interface Room {
   y: number;
   w: number;
   h: number;
+  /** Painted tile layer, one `Tile` digit per tile, row by row; absent means use the generated rough-in. */
+  tiles?: string;
 }
 
 export type NodeKind = 'start' | 'key' | 'gate' | 'boss';

@@ -9,6 +9,8 @@ import {
   sampleContent,
   toProjectFile,
 } from './project';
+import { roughIn } from '../game/world';
+import { encodeTiles, Tile } from './tiles';
 
 const roundTrip = (c = sampleContent()) => parseProject(JSON.stringify(toProjectFile(c)));
 
@@ -49,6 +51,25 @@ describe('project files', () => {
   ])('rejects %s', (_, text, msg) => {
     expect(() => parseProject(text)).toThrow(ProjectError);
     expect(() => parseProject(text)).toThrow(msg);
+  });
+
+  it('round-trips painted tiles', () => {
+    const c = sampleContent();
+    const room = c.rooms[0];
+    const tiles = encodeTiles(roughIn(room).map((v, i) => (i % 7 === 0 ? Tile.Platform : v)));
+    const painted = { ...c, rooms: [{ ...room, tiles }, ...c.rooms.slice(1)] };
+    expect(roundTrip(painted)).toEqual(painted);
+  });
+
+  it('upgrades a version 1 project', () => {
+    const v1 = { ...toProjectFile(sampleContent()), version: 1 };
+    expect(parseProject(JSON.stringify(v1))).toEqual(sampleContent());
+  });
+
+  it('rejects tiles that do not fit the room', () => {
+    const f = toProjectFile(sampleContent());
+    f.rooms = [{ ...f.rooms[0], tiles: '0101' }];
+    expect(() => parseProject(JSON.stringify(f))).toThrow("Room A has a tile layer that doesn't match its size.");
   });
 
   it('names exported files after the project', () => {

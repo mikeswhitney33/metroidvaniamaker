@@ -1,4 +1,5 @@
 import { colorOf, isKey, rng, type NodeIndex } from '../model/graph';
+import { Tile } from '../model/tiles';
 import type { GraphNode, StylePreset } from '../model/types';
 import { buildWorld, floorSpot, type WorldRoom } from './world';
 
@@ -32,7 +33,12 @@ export interface GameEvents {
   onEnterRoom(room: WorldRoom): void;
   onPickup(item: { id: string; label: string }, have: string[]): void;
   onWin(boss: GraphNode): void;
+  /** Touched spikes and went back to where the room was entered. */
+  onHurt(room: WorldRoom): void;
 }
+
+/** Tiles of the room visible top to bottom; the camera scrolls rooms taller or wider than the view. */
+const VIEW_TILES_H = 22;
 
 export type GameInput = 'jump' | 'dash';
 
@@ -48,6 +54,8 @@ export class Game {
   private readonly byId: NodeIndex;
   private readonly p: Player;
   private won = false;
+  /** Where the player entered the current room; spikes send them back here. */
+  private entry: { x: number; y: number };
 
   constructor(
     rooms: Parameters<typeof buildWorld>[0],
@@ -76,6 +84,7 @@ export class Game {
     this.boss = nodes.find((n) => n.kind === 'boss');
     const sp = floorSpot(sr);
     this.p = { x: sp.x - 0.375, y: sp.y - 1.5, w: 0.75, h: 1.5, vx: 0, vy: 0, ground: false, air: 1, dash: 0, dcd: 0, face: 1 };
+    this.entry = { x: this.p.x, y: this.p.y };
   }
 
   /** Seconds since spawn, formatted mm:ss for the run log. */
@@ -93,15 +102,29 @@ export class Game {
   }
 
   /** Tiles outside any room, and every tile of a locked room, are solid. */
-  private solid(tx: number, ty: number): boolean {
+  private tile(tx: number, ty: number): number {
     const r = this.roomAt(tx, ty);
-    if (!r || this.locked(r.id)) return true;
-    return r.g[(ty - r.ty) * r.tw + (tx - r.tx)] === 1;
+    if (!r || this.locked(r.id)) return Tile.Solid;
+    return r.g[(ty - r.ty) * r.tw + (tx - r.tx)];
   }
 
-  private hit(p: Player): boolean {
+  /**
+   * Whether the player overlaps something that blocks them. Platforms block only when
+   * falling onto them from above: `feet` is the player's bottom edge before this step.
+   */
+  private hit(p: Player, feet?: number): boolean {
     for (let x = Math.floor(p.x); x <= Math.floor(p.x + p.w); x++)
-      for (let y = Math.floor(p.y); y <= Math.floor(p.y + p.h); y++) if (this.solid(x, y)) return true;
+      for (let y = Math.floor(p.y); y <= Math.floor(p.y + p.h); y++) {
+        const t = this.tile(x, y);
+        if (t === Tile.Solid) return true;
+        if (t === Tile.Platform && feet !== undefined && feet <= y + 0.001) return true;
+      }
+    return false;
+  }
+
+  private touching(p: Player, kind: number): boolean {
+    for (let x = Math.floor(p.x + 0.05); x <= Math.floor(p.x + p.w - 0.05); x++)
+      for (let y = Math.floor(p.y + 0.05); y <= Math.floor(p.y + p.h - 0.05); y++) if (this.tile(x, y) === kind) return true;
     return false;
   }
 
@@ -142,8 +165,9 @@ export class Game {
         p.dash = 0;
       }
       p.ground = false;
+      const feet = p.y + p.h;
       p.y += p.vy * h;
-      if (this.hit(p)) {
+      if (this.hit(p, p.vy > 0 ? feet : undefined)) {
         if (p.vy > 0) {
           p.y = Math.floor(p.y + p.h) - p.h - 0.001;
           p.ground = true;
@@ -153,9 +177,16 @@ export class Game {
       }
     }
 
+    if (this.touching(p, Tile.Spikes)) {
+      Object.assign(p, { x: this.entry.x, y: this.entry.y, vx: 0, vy: 0, dash: 0 });
+      this.events.onHurt(this.room);
+      return;
+    }
+
     const cr = this.roomAt(Math.floor(p.x + p.w / 2), Math.floor(p.y + p.h / 2));
     if (cr && cr !== this.room) {
       this.room = cr;
+      this.entry = { x: p.x, y: p.y };
       this.events.onEnterRoom(cr);
       if (this.boss && cr.id === this.boss.room && !this.won) {
         this.won = true;
@@ -187,10 +218,16 @@ export class Game {
     ctx.fillStyle = '#0b0c0f';
     ctx.fillRect(0, 0, cw, ch);
 
-    // Fit the current room to the canvas.
-    const s = Math.max(3, Math.min(22, Math.floor(Math.min((cw - 40) / r.tw, (ch - 40) / r.th))));
-    const ox = Math.floor((cw - r.tw * s) / 2);
-    const oy = Math.floor((ch - r.th * s) / 2);
+    // Camera: a fixed zoom; follow the player inside rooms bigger than the view, centre smaller ones.
+    const s = Math.max(4, Math.floor(ch / VIEW_TILES_H));
+    const follow = (view: number, size: number, at: number) =>
+      size * s <= view ? Math.floor((view - size * s) / 2) : Math.round(Math.min(0, Math.max(view - size * s, view / 2 - at * s)));
+    const ox = follow(cw, r.tw, this.p.x + this.p.w / 2 - r.tx);
+    const oy = follow(ch, r.th, this.p.y + this.p.h / 2 - r.ty);
+    const x0 = Math.max(0, Math.floor(-ox / s));
+    const x1 = Math.min(r.tw, Math.ceil((cw - ox) / s));
+    const y0 = Math.max(0, Math.floor(-oy / s));
+    const y1 = Math.min(r.th, Math.ceil((ch - oy) / s));
 
     // Background with parallax pillars.
     ctx.save();
@@ -209,23 +246,12 @@ export class Game {
     }
     ctx.restore();
 
-    // Solid tiles, with a highlight on top edges.
-    const eb = Math.max(1, Math.round(s / 5));
-    for (let y = 0; y < r.th; y++)
-      for (let x = 0; x < r.tw; x++) {
-        if (!r.g[y * r.tw + x]) continue;
-        ctx.fillStyle = P.wall;
-        ctx.fillRect(ox + x * s, oy + y * s, s, s);
-        if (y > 0 && !r.g[(y - 1) * r.tw + x]) {
-          ctx.fillStyle = P.edge;
-          ctx.fillRect(ox + x * s, oy + y * s, s, eb);
-        }
-      }
+    drawTiles(ctx, r.g, r.tw, P, s, ox, oy, x0, y0, x1, y1);
 
     // Doorways into locked rooms pulse in the colour of the key that opens them.
-    for (let y = 0; y < r.th; y++)
-      for (let x = 0; x < r.tw; x++) {
-        if (r.g[y * r.tw + x]) continue;
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        if (r.g[y * r.tw + x] === Tile.Solid) continue;
         const edge = x === 0 || y === 0 || x === r.tw - 1 || y === r.th - 1;
         if (!edge) continue;
         const wx = r.tx + x + (x === 0 ? -1 : x === r.tw - 1 ? 1 : 0);
@@ -290,4 +316,49 @@ export class Game {
       ctx.globalAlpha = 1;
     }
   }
+}
+
+/** Draws a tile grid: solid blocks with lit top edges, thin platforms, and spikes. */
+export function drawTiles(
+  ctx: CanvasRenderingContext2D,
+  g: Uint8Array,
+  tw: number,
+  P: Pick<StylePreset, 'wall' | 'edge'>,
+  s: number,
+  ox: number,
+  oy: number,
+  x0 = 0,
+  y0 = 0,
+  x1 = tw,
+  y1 = g.length / tw,
+): void {
+  const eb = Math.max(1, Math.round(s / 5));
+  for (let y = y0; y < y1; y++)
+    for (let x = x0; x < x1; x++) {
+      const t = g[y * tw + x];
+      const X = ox + x * s;
+      const Y = oy + y * s;
+      if (t === Tile.Solid) {
+        ctx.fillStyle = P.wall;
+        ctx.fillRect(X, Y, s, s);
+        if (y > 0 && g[(y - 1) * tw + x] !== Tile.Solid) {
+          ctx.fillStyle = P.edge;
+          ctx.fillRect(X, Y, s, eb);
+        }
+      } else if (t === Tile.Platform) {
+        ctx.fillStyle = P.wall;
+        ctx.fillRect(X, Y, s, Math.max(2, Math.round(s * 0.35)));
+        ctx.fillStyle = P.edge;
+        ctx.fillRect(X, Y, s, eb);
+      } else if (t === Tile.Spikes) {
+        ctx.fillStyle = P.edge;
+        ctx.beginPath();
+        for (let i = 0; i < 2; i++) {
+          ctx.moveTo(X + (i * s) / 2, Y + s);
+          ctx.lineTo(X + (i * s) / 2 + s / 4, Y + s * 0.3);
+          ctx.lineTo(X + ((i + 1) * s) / 2, Y + s);
+        }
+        ctx.fill();
+      }
+    }
 }

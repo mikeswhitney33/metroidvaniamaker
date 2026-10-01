@@ -1,4 +1,5 @@
 import { sampleContent, type ProjectContent } from '../model/project';
+import { Tile, type TileKind } from '../model/tiles';
 import type { TileSize } from '../model/types';
 import { emptyHistory, type History } from './history';
 
@@ -37,6 +38,9 @@ export interface EditorState extends ProjectContent {
   showItems: boolean;
   showRoute: boolean;
   draft: Draft | null;
+  /** Room open in the tile painter, or null for the map. */
+  editRoom: string | null;
+  paintTile: TileKind;
   gen: GenState | null;
   /** Bumped on every content edit, so an unchanged map can skip regeneration. */
   rev: number;
@@ -61,6 +65,8 @@ export const initialState: EditorState = {
   showItems: true,
   showRoute: true,
   draft: null,
+  editRoom: null,
+  paintTile: Tile.Solid,
   gen: null,
   rev: 0,
   builtRev: -1,

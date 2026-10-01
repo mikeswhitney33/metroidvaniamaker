@@ -1,10 +1,11 @@
 import { SAMPLE_NODES, SAMPLE_ROOMS } from './sampleProject';
+import { decodeTiles } from './tiles';
 import type { GraphNode, NodeKind, Room, TileSize } from './types';
 
 /** Marks a JSON file as a Vaultwright project. */
 export const PROJECT_FORMAT = 'vaultwright-project';
 /** Bump when the saved shape changes, and add a migration from the previous version. */
-export const PROJECT_VERSION = 1;
+export const PROJECT_VERSION = 2;
 
 /** Everything the author makes: what gets saved, exported and undone. */
 export interface ProjectContent {
@@ -87,7 +88,10 @@ export function toProjectFile(c: ProjectContent, now = new Date()): ProjectFile 
 type Json = Record<string, unknown>;
 
 /** Steps from version n to n + 1, keyed by n. */
-const MIGRATIONS: Record<number, (p: Json) => Json> = {};
+const MIGRATIONS: Record<number, (p: Json) => Json> = {
+  // Version 2 added optional painted tiles to rooms; version 1 files need no change.
+  1: (p) => p,
+};
 
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
@@ -103,7 +107,14 @@ function room(v: unknown, i: number): Room {
     if (typeof x !== 'number' || !Number.isInteger(x)) throw new ProjectError(`Room ${v.id} has no valid ${k}.`);
     return x;
   };
-  return { id: v.id, name: str(v.name, v.id), x: n('x'), y: n('y'), w: n('w'), h: n('h') };
+  const r: Room = { id: v.id, name: str(v.name, v.id), x: n('x'), y: n('y'), w: n('w'), h: n('h') };
+  if (v.tiles !== undefined) {
+    if (typeof v.tiles !== 'string' || !decodeTiles(v.tiles, r)) {
+      throw new ProjectError(`Room ${v.id} has a tile layer that doesn't match its size.`);
+    }
+    r.tiles = v.tiles;
+  }
+  return r;
 }
 
 function node(v: unknown, i: number): GraphNode {

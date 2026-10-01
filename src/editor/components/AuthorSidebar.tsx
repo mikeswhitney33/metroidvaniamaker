@@ -185,7 +185,7 @@ export function AuthorSidebar() {
 }
 
 function RoomInspector() {
-  const { state, roomById, colorOf, edit, place, unplace, deleteRoom } = useEditor();
+  const { state, roomById, colorOf, set, edit, place, unplace, deleteRoom } = useEditor();
   const room = state.selRoom ? roomById[state.selRoom] : undefined;
   if (!room) return null;
   const corridor = room.w === 1 || room.h === 1;
@@ -265,6 +265,9 @@ function RoomInspector() {
           ))}
         </select>
       </div>
+      <button className="vw-btn-secondary" style={secondaryButton} onClick={() => set({ editRoom: room.id })}>
+        {room.tiles ? 'Edit tiles' : 'Paint tiles'}
+      </button>
       <button style={dangerButton} onClick={() => deleteRoom(room.id)}>
         Delete room
       </button>

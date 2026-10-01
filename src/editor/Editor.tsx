@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Game, type GameInput } from '../game/Game';
+import { buildWorld } from '../game/world';
+import { TILE_KINDS } from '../model/tiles';
 import { analyze, autoPlaceKeys, colorOf, indexNodes, isKey, nextSeed } from '../model/graph';
 import {
   blankContent,
@@ -21,6 +23,7 @@ import { MapBoard } from './components/MapBoard';
 import { PlaytestPanel } from './components/PlaytestPanel';
 import { PlaytestSidebar } from './components/PlaytestSidebar';
 import { PlaytestView } from './components/PlaytestView';
+import { RoomPainter } from './components/RoomPainter';
 import { StatusBar } from './components/StatusBar';
 import { Toast } from './components/Toast';
 import { TopBar } from './components/TopBar';
@@ -183,6 +186,9 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
         addLog(`Picked up ${item.label}`);
         flash(`Picked up ${item.label}`);
       },
+      onHurt(room) {
+        addLog(`Hit spikes in ${room.name}`);
+      },
       onWin(boss) {
         addLog(`Reached ${boss.label}. Run complete`);
         flash(`${boss.label} reached. The build is beatable`);
@@ -253,6 +259,10 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
         e.preventDefault();
         if (shortcut === 'save') saveFile();
         else step(shortcut);
+      } else if (down && stateRef.current.editRoom) {
+        const t = TILE_KINDS.find((k) => e.code === `Digit${k.key}`);
+        if (t) set({ paintTile: t.kind });
+        if (e.code === 'Escape') set({ editRoom: null });
       } else if (down) {
         const tool = TOOL_KEYS[e.code];
         if (tool) set({ tool });
@@ -299,6 +309,7 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
   const analysis = useMemo(() => analyze(state.rooms, state.nodes), [state.rooms, state.nodes]);
   const byId = useMemo(() => indexNodes(state.nodes), [state.nodes]);
   const roomById = useMemo(() => Object.fromEntries(state.rooms.map((r) => [r.id, r])), [state.rooms]);
+  const world = useMemo(() => buildWorld(state.rooms), [state.rooms]);
   const stepOf = useMemo(() => Object.fromEntries(analysis.order.map((id, i) => [id, i + 1])), [analysis]);
 
   const api: EditorApi = {
@@ -306,6 +317,7 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
     analysis,
     byId,
     roomById,
+    world,
     stepOf,
     palette: presetById(state.style),
     hatchUnreachable,
@@ -367,7 +379,7 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
               overflow: 'hidden',
             }}
           >
-            {author ? <MapBoard /> : <PlaytestView />}
+            {!author ? <PlaytestView /> : state.editRoom && roomById[state.editRoom] ? <RoomPainter /> : <MapBoard />}
             {state.toast && <Toast message={state.toast} />}
           </main>
           {author ? <InspectorPanel /> : <PlaytestPanel />}

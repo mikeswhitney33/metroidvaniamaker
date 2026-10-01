@@ -22,6 +22,10 @@ npm run build      # typecheck + production build
 - **Author mode**: draw rooms on a 32×18 grid (`B`), select (`V`) or erase
   (`E`) them. Rooms that share an edge get a doorway. Drag keys and gates onto
   rooms, or use **Auto-place keys** to lay them out along the gate order.
+- **Room tiles**: double-click a room (or **Paint tiles** in its inspector) to
+  paint its 8×8-tiles-per-cell interior: solid (`1`), one-way platform (`2`),
+  spikes (`3`) or empty (`4`); right-drag clears. Doorways are carved
+  wherever rooms touch. **Reset to generated** goes back to the rough-in.
 - **Lock & key**: the requirement graph, with an inspector for the selected
   node's name, placement and requirements.
 - **Art style**: palette presets, reference-art slots (drop or pick an image;
@@ -30,8 +34,9 @@ npm run build      # typecheck + production build
   unreachable bosses, unplaced nodes, sequence breaks and isolated rooms, and
   lists the critical path.
 - **Playtest**: builds a tile world from the map and runs it on a canvas.
-  Arrow keys / `A` `D` move, `Space` jumps, `Shift` dashes once you find the
-  Dash Boots, `R` restarts.
+  The camera scrolls rooms bigger than the screen; spikes send you back to
+  where you entered the room. Arrow keys / `A` `D` move, `Space` jumps,
+  `Shift` dashes once you find the Dash Boots, `R` restarts.
 
 ## Layout
 

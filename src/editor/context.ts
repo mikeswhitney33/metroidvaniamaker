@@ -1,4 +1,5 @@
 import { createContext, useContext, type RefObject } from 'react';
+import type { WorldRoom } from '../game/world';
 import type { Analysis, Issue, NodeIndex } from '../model/graph';
 import type { GraphNode, Room, StylePreset } from '../model/types';
 import type { EditorState } from './state';
@@ -10,6 +11,8 @@ export interface EditorApi {
   analysis: Analysis;
   byId: NodeIndex;
   roomById: Record<string, Room>;
+  /** Rooms baked to tiles, doorways carved, in `state.rooms` order. */
+  world: WorldRoom[];
   /** Route step number of each key on the critical path. */
   stepOf: Record<string, number>;
   palette: StylePreset;

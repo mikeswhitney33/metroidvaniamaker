@@ -1,4 +1,6 @@
-import type { MouseEvent } from 'react';
+import { useEffect, useRef, type MouseEvent } from 'react';
+import type { WorldRoom } from '../../game/world';
+import { Tile, TILES_PER_CELL } from '../../model/tiles';
 import { GRID_H, GRID_W } from '../../model/sampleProject';
 import type { Room } from '../../model/types';
 import { useEditor } from '../context';
@@ -16,7 +18,7 @@ const TOOLS: [Tool, string, string][] = [
 ];
 
 const HINTS: Record<Tool, string> = {
-  select: 'Drag keys and gates between rooms to override placement',
+  select: 'Double-click a room to paint its tiles. Drag keys and gates between rooms to move them',
   draw: 'Drag on the grid to add a room',
   erase: 'Click a room to delete it',
 };
@@ -159,7 +161,8 @@ export function MapBoard() {
 }
 
 function RoomTile({ room: r }: { room: Room }) {
-  const { state, analysis, hatchUnreachable, set, place, deleteRoom } = useEditor();
+  const { state, analysis, world, hatchUnreachable, set, place, deleteRoom } = useEditor();
+  const wr = world.find((w) => w.id === r.id);
   const corridor = r.w === 1 || r.h === 1;
   const selected = state.selRoom === r.id;
   const unreachable = hatchUnreachable && !analysis.reached.has(r.id);
@@ -172,6 +175,10 @@ function RoomTile({ room: r }: { room: Room }) {
         e.stopPropagation();
         if (state.tool === 'erase') deleteRoom(r.id);
         else set({ selRoom: r.id });
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (state.tool === 'select') set({ selRoom: r.id, editRoom: r.id });
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -203,6 +210,7 @@ function RoomTile({ room: r }: { room: Room }) {
           boxShadow: selected ? '0 0 0 2px rgba(240,180,76,.3)' : 'none',
         }}
       />
+      {wr && <RoomThumb room={wr} />}
       {r.w >= 3 && r.h >= 2 && (
         <div
           style={{
@@ -227,5 +235,31 @@ function RoomTile({ room: r }: { room: Room }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Faint picture of the room's actual tiles, so painted rooms read on the map. */
+function RoomThumb({ room }: { room: WorldRoom }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const px = CELL / TILES_PER_CELL;
+  useEffect(() => {
+    const ctx = ref.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, room.tw * px, room.th * px);
+    for (let y = 0; y < room.th; y++)
+      for (let x = 0; x < room.tw; x++) {
+        const t = room.g[y * room.tw + x];
+        if (t === Tile.Empty) continue;
+        ctx.fillStyle = t === Tile.Spikes ? 'rgba(255,107,107,.45)' : t === Tile.Platform ? 'rgba(223,226,231,.22)' : 'rgba(223,226,231,.1)';
+        ctx.fillRect(x * px, y * px, px, t === Tile.Platform ? 1 : px);
+      }
+  }, [room, px]);
+  return (
+    <canvas
+      ref={ref}
+      width={room.tw * px}
+      height={room.th * px}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', borderRadius: 4 }}
+    />
   );
 }
