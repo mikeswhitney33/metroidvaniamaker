@@ -15,13 +15,17 @@ npm run build      # typecheck + production build
 
 ## What's in it
 
+- **Projects**: work autosaves in the browser (IndexedDB) and comes back on
+  reload. The **Project** menu starts a new project, opens the Hollow Depths
+  sample, opens a `.vwm.json` file, or saves one (`Ctrl/⌘ S`). Every content
+  edit can be undone (`Ctrl/⌘ Z`) and redone (`Ctrl/⌘ Shift Z` or `Ctrl Y`).
 - **Author mode**: draw rooms on a 32×18 grid (`B`), select (`V`) or erase
   (`E`) them. Rooms that share an edge get a doorway. Drag keys and gates onto
   rooms, or use **Auto-place keys** to lay them out along the gate order.
 - **Lock & key**: the requirement graph, with an inspector for the selected
   node's name, placement and requirements.
 - **Art style**: palette presets, reference-art slots (drop or pick an image;
-  kept in `localStorage`), a prompt and tile size.
+  saved with the project), a prompt and tile size.
 - **Validate**: simulates a player collecting keys to flag softlocks,
   unreachable bosses, unplaced nodes, sequence breaks and isolated rooms, and
   lists the critical path.
@@ -33,7 +37,8 @@ npm run build      # typecheck + production build
 
 ```
 src/
-  model/    rooms, lock & key graph, solver and auto-placement (pure, tested)
+  model/    rooms, lock & key graph, solver, auto-placement and the project
+            file format (pure, tested)
   game/     tile world builder and the playtest engine
   editor/   React UI: Editor.tsx owns state; components/ are the panels
 ```

@@ -18,8 +18,11 @@ export interface EditorApi {
   colorOf(n: GraphNode | undefined): string;
   /** UI-only state change. */
   set(patch: Patch): void;
-  /** Content change: marks the current build stale. */
-  edit(patch: Patch): void;
+  /**
+   * Content change: marks the current build stale and adds an undo step.
+   * Edits sharing a `merge` key in quick succession (typing) undo as one step.
+   */
+  edit(patch: Patch, merge?: string): void;
   flash(msg: string): void;
   place(nodeId: string, roomId: string): void;
   unplace(nodeId: string): void;
@@ -28,6 +31,13 @@ export interface EditorApi {
   generate(): void;
   restart(): void;
   openIssue(issue: Issue): void;
+  undo(): void;
+  redo(): void;
+  /** Downloads the project as a .vwm.json file. */
+  saveFile(): void;
+  openFile(file: File): void;
+  newProject(): void;
+  loadSample(): void;
 }
 
 export const EditorContext = createContext<EditorApi | null>(null);

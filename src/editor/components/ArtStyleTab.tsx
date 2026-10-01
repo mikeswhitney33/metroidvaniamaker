@@ -61,7 +61,7 @@ export function ArtStyleTab() {
         <div style={sectionLabel}>Prompt</div>
         <textarea
           value={state.prompt}
-          onChange={(e) => edit({ prompt: e.target.value })}
+          onChange={(e) => edit({ prompt: e.target.value }, 'prompt')}
           rows={4}
           style={{
             resize: 'vertical',

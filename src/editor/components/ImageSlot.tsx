@@ -1,35 +1,24 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useRef, useState, type DragEvent } from 'react';
+import { useEditor } from '../context';
 import { C, SANS } from '../ui';
-
-const STORAGE_PREFIX = 'vaultwright.image-slot.';
-
-function load(id: string): string | null {
-  try {
-    return localStorage.getItem(STORAGE_PREFIX + id);
-  } catch {
-    return null;
-  }
-}
-
-function save(id: string, dataUrl: string | null) {
-  try {
-    if (dataUrl) localStorage.setItem(STORAGE_PREFIX + id, dataUrl);
-    else localStorage.removeItem(STORAGE_PREFIX + id);
-  } catch {
-    // Storage full or blocked: the image still shows for this session.
-  }
-}
 
 /**
  * User-fillable image placeholder: drop an image on it or click to browse.
- * The chosen image is kept per `id` in localStorage.
+ * The chosen image is saved in the project under `id`, so it autosaves, undoes and exports with it.
  */
 export function ImageSlot({ id, placeholder, radius = 5 }: { id: string; placeholder: string; radius?: number }) {
-  const [src, setSrc] = useState<string | null>(() => load(id));
+  const { state, edit } = useEditor();
+  const src = state.images[id] ?? null;
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
-  useEffect(() => save(id, src), [id, src]);
+  const setSrc = (dataUrl: string | null) =>
+    edit((s) => {
+      const images = { ...s.images };
+      if (dataUrl) images[id] = dataUrl;
+      else delete images[id];
+      return { images };
+    });
 
   const read = (file: File | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;

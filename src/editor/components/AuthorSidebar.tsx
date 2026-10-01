@@ -20,7 +20,7 @@ const sidebar = {
 
 /** Left panel while authoring: map source, overlays, room list and room inspector. */
 export function AuthorSidebar() {
-  const { state, set, flash, analysis } = useEditor();
+  const { state, set, edit, flash, analysis } = useEditor();
   return (
     <aside style={sidebar}>
       <div style={{ padding: 14, borderBottom: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -84,7 +84,7 @@ export function AuthorSidebar() {
                 min={0}
                 max={100}
                 value={state.threshold}
-                onChange={(e) => set({ threshold: +e.target.value })}
+                onChange={(e) => edit({ threshold: +e.target.value }, 'threshold')}
                 style={{ accentColor: C.accent, width: '100%' }}
               />
             </label>
@@ -211,7 +211,7 @@ function RoomInspector() {
         value={room.name}
         onChange={(e) => {
           const name = e.target.value;
-          edit((s) => ({ rooms: s.rooms.map((r) => (r.id === room.id ? { ...r, name } : r)) }));
+          edit((s) => ({ rooms: s.rooms.map((r) => (r.id === room.id ? { ...r, name } : r)) }), `name:${room.id}`);
         }}
         style={textInput}
       />

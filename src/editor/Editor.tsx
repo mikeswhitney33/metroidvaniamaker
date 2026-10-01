@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Game, type GameInput } from '../game/Game';
 import { analyze, autoPlaceKeys, colorOf, indexNodes, isKey, nextSeed } from '../model/graph';
+import {
+  blankContent,
+  CONTENT_KEYS,
+  parseProject,
+  pickContent,
+  ProjectError,
+  projectFileName,
+  sampleContent,
+  toProjectFile,
+  type ProjectContent,
+} from '../model/project';
 import { presetById } from '../model/sampleProject';
 import type { Room } from '../model/types';
 import { AuthorSidebar } from './components/AuthorSidebar';
@@ -14,6 +25,8 @@ import { StatusBar } from './components/StatusBar';
 import { Toast } from './components/Toast';
 import { TopBar } from './components/TopBar';
 import { EditorContext, type EditorApi } from './context';
+import { record, redo, sameContent, undo } from './history';
+import { clearLegacyImages, downloadText, legacyImages, loadAutosave, saveAutosave } from './persist';
 import { initialState, type EditorState, type Tool } from './state';
 import { C } from './ui';
 
@@ -25,6 +38,20 @@ export interface EditorProps {
 }
 
 const TOOL_KEYS: Record<string, Tool> = { KeyV: 'select', KeyB: 'draw', KeyE: 'erase' };
+
+/** Wait this long after the last change before autosaving. */
+const AUTOSAVE_MS = 400;
+
+/** Swaps in other content, dropping selections that no longer exist. */
+function withContent(s: EditorState, c: ProjectContent): EditorState {
+  return {
+    ...s,
+    ...c,
+    rev: s.rev + 1,
+    selRoom: c.rooms.some((r) => r.id === s.selRoom) ? s.selRoom : null,
+    selNode: c.nodes.some((n) => n.id === s.selNode) ? s.selNode : null,
+  };
+}
 
 export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps) {
   const [state, setState] = useState<EditorState>(initialState);
@@ -42,8 +69,20 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
     setState((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }));
   }, []);
 
-  const edit: EditorApi['edit'] = useCallback((patch) => {
-    setState((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch), rev: s.rev + 1 }));
+  const edit: EditorApi['edit'] = useCallback((patch, merge) => {
+    setState((s) => {
+      const next = { ...s, ...(typeof patch === 'function' ? patch(s) : patch) };
+      const before = pickContent(s);
+      if (sameContent(before, next)) return next;
+      return { ...next, rev: s.rev + 1, history: record(s.history, before, merge, Date.now()) };
+    });
+  }, []);
+
+  const step = useCallback((dir: 'undo' | 'redo') => {
+    setState((s) => {
+      const r = (dir === 'undo' ? undo : redo)(s.history, pickContent(s));
+      return r ? { ...withContent(s, r.content), history: r.history } : s;
+    });
   }, []);
 
   const flash = useCallback(
@@ -59,6 +98,72 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
     const t = gameRef.current?.clock() ?? '00:00';
     setState((s) => ({ ...s, log: [{ t, msg }, ...s.log].slice(0, 12) }));
   }, []);
+
+  /** Replaces the whole project as one undoable step. */
+  const replaceContent = useCallback(
+    (c: ProjectContent, msg: string) => {
+      setState((s) => ({ ...withContent(s, c), history: record(s.history, pickContent(s), undefined, Date.now()) }));
+      flash(msg);
+    },
+    [flash],
+  );
+
+  const saveFile = useCallback(() => {
+    const S = stateRef.current;
+    downloadText(JSON.stringify(toProjectFile(S), null, 2), projectFileName(S.name));
+    flash(`Saved ${projectFileName(S.name)}`);
+  }, [flash]);
+
+  const openFile = useCallback(
+    async (file: File) => {
+      try {
+        const c = parseProject(await file.text());
+        replaceContent(c, `Opened ${c.name}`);
+      } catch (e) {
+        flash(e instanceof ProjectError ? `Couldn't open ${file.name}: ${e.message}` : `Couldn't read ${file.name}`);
+      }
+    },
+    [replaceContent, flash],
+  );
+
+  /** Old localStorage images, removed only once an autosave holds them. */
+  const legacyIds = useRef<string[]>([]);
+
+  // Restore the last autosave once; until then, autosave stays off so it can't overwrite it.
+  useEffect(() => {
+    let live = true;
+    loadAutosave().then((saved) => {
+      if (!live) return;
+      if (saved) {
+        setState((s) => ({ ...withContent(s, saved), saveStatus: 'saved' }));
+        return;
+      }
+      const images = legacyImages();
+      legacyIds.current = Object.keys(images);
+      setState((s) => ({ ...s, images: { ...s.images, ...images }, saveStatus: 'saving' }));
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const content = CONTENT_KEYS.map((k) => state[k]);
+  const loaded = state.saveStatus !== 'loading';
+  useEffect(() => {
+    if (!loaded) return;
+    set({ saveStatus: 'saving' });
+    const t = window.setTimeout(() => {
+      saveAutosave(pickContent(stateRef.current)).then(
+        () => {
+          clearLegacyImages(legacyIds.current);
+          legacyIds.current = [];
+          set({ saveStatus: 'saved' });
+        },
+        () => set({ saveStatus: 'error' }),
+      );
+    }, AUTOSAVE_MS);
+    return () => window.clearTimeout(t);
+  }, [loaded, set, ...content]);
 
   const startPlay = useCallback(() => {
     const S = stateRef.current;
@@ -141,7 +246,14 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
             if (e.code === 'KeyR') restart();
           }
         } else held.current.delete(e.code);
-      } else if (down && !e.metaKey && !e.ctrlKey) {
+      } else if (down && (e.metaKey || e.ctrlKey)) {
+        const shortcut =
+          e.code === 'KeyZ' ? (e.shiftKey ? 'redo' : 'undo') : e.code === 'KeyY' ? 'redo' : e.code === 'KeyS' ? 'save' : null;
+        if (!shortcut) return;
+        e.preventDefault();
+        if (shortcut === 'save') saveFile();
+        else step(shortcut);
+      } else if (down) {
         const tool = TOOL_KEYS[e.code];
         if (tool) set({ tool });
       }
@@ -154,7 +266,7 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
     };
-  }, [restart, set]);
+  }, [restart, set, step, saveFile]);
 
   // Playtest loop.
   useEffect(() => {
@@ -226,6 +338,12 @@ export function Editor({ jumpPower = 30, hatchUnreachable = true }: EditorProps)
     },
     generate,
     restart,
+    undo: () => step('undo'),
+    redo: () => step('redo'),
+    saveFile,
+    openFile,
+    newProject: () => replaceContent(blankContent(), 'Started a new project. Undo to get the old one back'),
+    loadSample: () => replaceContent(sampleContent(), 'Loaded the Hollow Depths sample'),
     openIssue(issue) {
       set((s) => ({ mode: 'author', selRoom: issue.room ?? s.selRoom, selNode: issue.node ?? s.selNode }));
     },

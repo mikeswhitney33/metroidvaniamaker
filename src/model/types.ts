@@ -32,3 +32,6 @@ export interface StylePreset {
   edge: string;
   player: string;
 }
+
+/** Tile size the art style is drawn at. */
+export type TileSize = '8px' | '16px' | '32px';

@@ -207,7 +207,7 @@ function NodeInspector() {
           value={sn.label}
           onChange={(e) => {
             const label = e.target.value;
-            edit((s) => ({ nodes: s.nodes.map((x) => (x.id === sn.id ? { ...x, label } : x)) }));
+            edit((s) => ({ nodes: s.nodes.map((x) => (x.id === sn.id ? { ...x, label } : x)) }), `label:${sn.id}`);
           }}
           style={{ ...textInput, flex: 1, minWidth: 0 }}
         />

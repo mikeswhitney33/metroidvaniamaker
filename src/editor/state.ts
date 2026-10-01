@@ -1,11 +1,13 @@
-import { SAMPLE_NODES, SAMPLE_ROOMS } from '../model/sampleProject';
-import type { GraphNode, Room } from '../model/types';
+import { sampleContent, type ProjectContent } from '../model/project';
+import type { TileSize } from '../model/types';
+import { emptyHistory, type History } from './history';
+
+export type { TileSize };
 
 export type Mode = 'author' | 'play';
 export type Tool = 'select' | 'draw' | 'erase';
 export type Tab = 'graph' | 'style' | 'validate';
 export type Source = 'image' | 'tiled' | 'draw';
-export type TileSize = '8px' | '16px' | '32px';
 
 export interface Draft {
   x0: number;
@@ -22,23 +24,19 @@ export interface LogEntry {
   msg: string;
 }
 
-export interface EditorState {
+/** Autosave state shown in the top bar; 'loading' until the last autosave has been read back. */
+export type SaveStatus = 'loading' | 'saved' | 'saving' | 'error';
+
+export interface EditorState extends ProjectContent {
   mode: Mode;
   tool: Tool;
   tab: Tab;
   source: Source;
-  rooms: Room[];
-  nodes: GraphNode[];
   selRoom: string | null;
   selNode: string | null;
-  style: string;
-  tile: TileSize;
-  prompt: string;
-  threshold: number;
   showItems: boolean;
   showRoute: boolean;
   draft: Draft | null;
-  seed: number;
   gen: GenState | null;
   /** Bumped on every content edit, so an unchanged map can skip regeneration. */
   rev: number;
@@ -48,27 +46,21 @@ export interface EditorState {
   have: string[];
   log: LogEntry[];
   toast: string | null;
-  /** Counter for naming newly drawn rooms. */
-  seq: number;
+  history: History;
+  saveStatus: SaveStatus;
 }
 
 export const initialState: EditorState = {
+  ...sampleContent(),
   mode: 'author',
   tool: 'select',
   tab: 'graph',
   source: 'image',
-  rooms: SAMPLE_ROOMS,
-  nodes: SAMPLE_NODES,
   selRoom: null,
   selNode: 'grapple',
-  style: 'ashen',
-  tile: '16px',
-  prompt: 'Crumbling cathedral carved into a dead volcano. Drifting ash, candlelit alcoves, rusted ironwork.',
-  threshold: 55,
   showItems: true,
   showRoute: true,
   draft: null,
-  seed: 4821,
   gen: null,
   rev: 0,
   builtRev: -1,
@@ -77,5 +69,6 @@ export const initialState: EditorState = {
   have: [],
   log: [],
   toast: null,
-  seq: 16,
+  history: emptyHistory,
+  saveStatus: 'loading',
 };
