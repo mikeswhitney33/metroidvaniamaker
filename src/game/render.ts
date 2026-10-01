@@ -150,6 +150,8 @@ export function drawGame(game: Game, c: HTMLCanvasElement, reduced: boolean) {
 
   // Camera.
   const s = Math.max(4, Math.floor(ch / VIEW_TILES_H));
+  /** Sprite sheet pixels per tile: the project's art tile size. */
+  const tilePx = parseInt(game.content.tile, 10) || 16;
   const follow = (view: number, size: number, at: number) =>
     size * s <= view ? Math.floor((view - size * s) / 2) : Math.round(Math.min(0, Math.max(view - size * s, view / 2 - at * s)));
   let ox = follow(cw, r.tw, p.cx - r.tx);
@@ -299,12 +301,12 @@ export function drawGame(game: Game, c: HTMLCanvasElement, reduced: boolean) {
   game.enemies.forEach((e) => {
     const a = game.animators[e.kind];
     const state = e.frozen > 0 ? 'frozen' : e.flash > 0 ? 'hurt' : 'move';
-    if (!a?.draw(ctx, state, e.t, X(e.cx), Y(e.y + e.h), s / 8, e.face)) drawEnemyRig(ctx, e, X(e.x), Y(e.y), s, game.enemyColor(e.kind));
+    if (!a?.draw(ctx, state, e.t, X(e.cx), Y(e.y + e.h), s / tilePx, e.face)) drawEnemyRig(ctx, e, X(e.x), Y(e.y), s, game.enemyColor(e.kind));
   });
   game.bosses.forEach((b) => {
     const a = game.animators[b.kind];
     if (b.kind === 'worm' && b.phase === 0) return;
-    if (!a?.draw(ctx, b.flash > 0 ? 'hurt' : 'move', b.t, X(b.cx), Y(b.y + b.h), s / 8, b.face)) drawBossRig(ctx, b, X(r.tx), Y(r.ty), s, '#ff8a5c');
+    if (!a?.draw(ctx, b.flash > 0 ? 'hurt' : 'move', b.t, X(b.cx), Y(b.y + b.h), s / tilePx, b.face)) drawBossRig(ctx, b, X(r.tx), Y(r.ty), s, '#ff8a5c');
   });
 
   // Player.
@@ -312,7 +314,7 @@ export function drawGame(game: Game, c: HTMLCanvasElement, reduced: boolean) {
     const a = game.animators.player;
     const st = playerState(p);
     const col = { suit: P.player, accent: '#ff8a3c', visor: '#5fe0c0' };
-    if (!a?.draw(ctx, st, p.t, X(p.cx), Y(p.y + p.h), s / 8, p.face)) drawPlayerRig(ctx, p, X(p.x), Y(p.y), s, col, now);
+    if (!a?.draw(ctx, st, p.t, X(p.cx), Y(p.y + p.h), s / tilePx, p.face)) drawPlayerRig(ctx, p, X(p.x), Y(p.y), s, col, now);
   }
 
   // Bombs, shots and blasts.

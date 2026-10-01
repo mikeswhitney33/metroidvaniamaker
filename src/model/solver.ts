@@ -254,12 +254,13 @@ function explore(g: Grid, c: ProjectContent, have: Have, tricks: Set<string>, st
   let fromRoom = -1;
   const push = (x: number, y: number, form: number, up: number, dj: number) => {
     if (!bodyOk(x, y, form)) return;
+    // Record room changes even into states already seen, so the way back counts.
+    const r = g.room[y * W + x];
+    if (fromRoom >= 0 && r >= 0 && r !== fromRoom) edges.add(`${fromRoom}>${r}`);
     const s = enc(x, y, form, Math.max(0, Math.min(HM, up)), dj);
     if (visited[s]) return;
     visited[s] = 1;
     queue.push(s);
-    const r = g.room[y * W + x];
-    if (fromRoom >= 0 && r >= 0 && r !== fromRoom) edges.add(`${fromRoom}>${r}`);
   };
 
   const sx = start % W;
@@ -406,15 +407,15 @@ export function solve(c: ProjectContent, opts: SolveOptions = {}): SolveResult {
 
   // Softlocks: at each stage, a room you can reach but can't leave toward that stage's progress.
   if (!opts.quick) {
-    const startRoom = g.room[start];
     const warned = new Set<number>();
     perWave.forEach(({ reach }, wave) => {
+      // The last stage collects nothing new: the game is done or stuck, not softlocked.
+      if (!waves[wave]?.length) return;
       const goalRooms = new Set<number>();
-      (waves[wave] ?? []).forEach((id) => {
+      waves[wave].forEach((id) => {
         const t = targets.find((x) => x.id === id);
         if (t) goalRooms.add(roomIds.indexOf(t.room));
       });
-      if (!goalRooms.size) goalRooms.add(startRoom);
       const back = new Map<number, number[]>();
       reach.edges.forEach((e) => {
         const [a, b] = e.split('>').map(Number);

@@ -3,11 +3,15 @@ import type { Tab } from '../state';
 import { C, MONO, SANS } from '../ui';
 import { ArtStyleTab } from './ArtStyleTab';
 import { LockKeyTab } from './LockKeyTab';
+import { RulesTab } from './RulesTab';
+import { SpritesTab } from './SpritesTab';
 import { ValidateTab } from './ValidateTab';
 
 const TABS: [Tab, string][] = [
-  ['graph', 'Lock & key'],
-  ['style', 'Art style'],
+  ['graph', 'Keys'],
+  ['rules', 'Rules'],
+  ['style', 'Style'],
+  ['sprites', 'Sprites'],
   ['validate', 'Validate'],
 ];
 
@@ -47,7 +51,7 @@ export function InspectorPanel() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '0 10px',
+              padding: '0 7px',
               border: 0,
               background: 'transparent',
               borderBottom: `2px solid ${state.tab === id ? C.accent : 'transparent'}`,
@@ -79,7 +83,9 @@ export function InspectorPanel() {
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 16px 20px' }}>
         {state.tab === 'graph' && <LockKeyTab />}
+        {state.tab === 'rules' && <RulesTab />}
         {state.tab === 'style' && <ArtStyleTab />}
+        {state.tab === 'sprites' && <SpritesTab />}
         {state.tab === 'validate' && <ValidateTab />}
       </div>
     </aside>

@@ -228,6 +228,24 @@ describe('solver', () => {
     expect(r.beatable).toBe(true);
     expect(r.issues.some((i) => i.sev === 'error' && i.msg.includes('Item'))).toBe(true);
   });
+
+  it('warns about a pit the player can fall into and never leave', () => {
+    const pit = asciiRoom('B', 0, 1, ['########', ...Array(14).fill('#......#'), '########']);
+    const rooms: Room[] = [{ id: 'A', name: 'Ledge', x: 0, y: 0, w: 2, h: 1 }, { ...pit, name: 'Pit' }];
+    const nodes: GraphNode[] = [
+      { id: 'start', kind: 'start', label: 'Start', room: 'A', req: [], pos: { x: 12, y: 6 } },
+      { id: 'k', kind: 'key', label: 'Key', room: 'A', req: [], pos: { x: 14, y: 6 } },
+      { id: 'goal', kind: 'boss', label: 'Goal', room: 'A', req: [] },
+    ];
+    const r = solve({ ...blankContent(), rooms, nodes });
+    expect(r.beatable).toBe(true);
+    expect(r.issues.some((i) => i.msg.startsWith('Softlock') && i.room === 'B')).toBe(true);
+    expect(r.issues.some((i) => i.msg.startsWith('Softlock') && i.room === 'A')).toBe(false);
+  });
+
+  it('raises no softlock warnings on the sample map', () => {
+    expect(solve(sampleContent()).issues.filter((i) => i.msg.startsWith('Softlock'))).toEqual([]);
+  });
 });
 
 export type { Room };

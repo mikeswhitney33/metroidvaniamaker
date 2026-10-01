@@ -1,15 +1,15 @@
-import { useEffect, useRef, type MouseEvent } from 'react';
-import type { WorldRoom } from '../../model/world';
+import { useEffect, useMemo, useRef, type MouseEvent, type WheelEvent } from 'react';
+import { DOOR_KINDS, doorInfo, linkKey } from '../../model/entities';
+import { adj } from '../../model/graph';
 import { Tile, TILES_PER_CELL } from '../../model/tiles';
-import { GRID_H, GRID_W } from '../../model/sampleProject';
-import type { Room } from '../../model/types';
+import type { DoorKind, Room } from '../../model/types';
+import type { WorldRoom } from '../../model/world';
 import { useEditor } from '../context';
 import type { Tool } from '../state';
 import { C, MONO, SANS, secondaryButton, seg, segGroup } from '../ui';
 import { NodeChip } from './NodeChip';
 
-/** Editor grid cell size in px. */
-export const CELL = 24;
+export const ZOOMS = [12, 16, 20, 24, 32, 40, 48];
 
 const TOOLS: [Tool, string, string][] = [
   ['select', 'Select', 'V'],
@@ -18,24 +18,45 @@ const TOOLS: [Tool, string, string][] = [
 ];
 
 const HINTS: Record<Tool, string> = {
-  select: 'Double-click a room to paint its tiles. Drag keys and gates between rooms to move them',
+  select: 'Double-click a room to paint it. Click a doorway marker to cycle its hatch. Ctrl+scroll zooms',
   draw: 'Drag on the grid to add a room',
   erase: 'Click a room to delete it',
 };
 
-function cellAt(e: MouseEvent<HTMLDivElement>) {
-  const b = e.currentTarget.getBoundingClientRect();
-  return {
-    x: Math.max(0, Math.min(GRID_W - 1, Math.floor((e.clientX - b.left) / CELL))),
-    y: Math.max(0, Math.min(GRID_H - 1, Math.floor((e.clientY - b.top) / CELL))),
-  };
+/** Side doorways between touching rooms, where hatches go. */
+export function sideLinks(rooms: Room[]) {
+  const out: { a: Room; b: Room; key: string; x: number; y: number }[] = [];
+  rooms.forEach((a, i) =>
+    rooms.slice(i + 1).forEach((b) => {
+      const j = adj(a, b);
+      if (j?.v) out.push({ a, b, key: linkKey(a.id, b.id), x: j.at, y: j.hi });
+    }),
+  );
+  return out;
 }
 
 /** Centre of the author view: tool strip and the room grid. */
 export function MapBoard() {
   const { state, set, edit, flash, autoPlace } = useEditor();
+  const CELL = state.zoom;
+  const { w: GW, h: GH } = state.grid;
   const drawing = state.tool === 'draw';
   const draft = state.draft;
+  const links = useMemo(() => sideLinks(state.rooms), [state.rooms]);
+
+  const cellAt = (e: MouseEvent<HTMLDivElement>) => {
+    const b = e.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(GW - 1, Math.floor((e.clientX - b.left) / CELL))),
+      y: Math.max(0, Math.min(GH - 1, Math.floor((e.clientY - b.top) / CELL))),
+    };
+  };
+
+  const zoomBy = (d: number) => {
+    const i = ZOOMS.indexOf(CELL);
+    const next = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, (i < 0 ? 3 : i) + d))];
+    set({ zoom: next });
+  };
 
   const finishDraft = () => {
     if (!draft) return;
@@ -56,8 +77,23 @@ export function MapBoard() {
       flash('Overlaps an existing room');
       return;
     }
+    const sel = state.rooms.find((r) => r.id === state.selRoom);
+    if (sel?.area) room.area = sel.area;
     edit((s) => ({ rooms: [...s.rooms, room], draft: null, seq: s.seq + 1, selRoom: room.id }));
     flash(`Added ${room.name} (${room.w}×${room.h})`);
+  };
+
+  const cycleDoor = (key: string, back: boolean) => {
+    const order = DOOR_KINDS.map((d) => d.kind);
+    const cur = state.doors[key]?.kind ?? 'open';
+    const next = order[(order.indexOf(cur) + (back ? order.length - 1 : 1)) % order.length] as DoorKind;
+    edit((s) => {
+      const doors = { ...s.doors };
+      if (next === 'open') delete doors[key];
+      else doors[key] = { kind: next, ...(next === 'grey' ? { flag: s.doors[key]?.flag ?? 'boss1' } : {}) };
+      return { doors };
+    });
+    flash(doorInfo(next).label);
   };
 
   return (
@@ -84,13 +120,20 @@ export function MapBoard() {
           ))}
         </div>
         <div style={{ width: 1, height: 18, background: C.line }} />
-        <button
-          className="vw-btn-secondary"
-          onClick={autoPlace}
-          style={{ ...secondaryButton, flex: 'none', whiteSpace: 'nowrap' }}
-        >
+        <button className="vw-btn-secondary" onClick={autoPlace} style={{ ...secondaryButton, flex: 'none', whiteSpace: 'nowrap' }}>
           Auto-place keys
         </button>
+        <div style={{ ...segGroup, flex: 'none' }} aria-label="Zoom">
+          <button style={seg(false)} aria-label="Zoom out" onClick={() => zoomBy(-1)}>
+            −
+          </button>
+          <span style={{ alignSelf: 'center', minWidth: 38, textAlign: 'center', font: `400 11px ${MONO}`, color: C.muted }}>
+            {Math.round((CELL / 24) * 100)}%
+          </span>
+          <button style={seg(false)} aria-label="Zoom in" onClick={() => zoomBy(1)}>
+            +
+          </button>
+        </div>
         <div
           style={{
             flex: 1,
@@ -106,7 +149,14 @@ export function MapBoard() {
           {HINTS[state.tool]}
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', padding: 28 }}>
+      <div
+        style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', padding: 28 }}
+        onWheel={(e: WheelEvent) => {
+          if (!e.ctrlKey && !e.metaKey) return;
+          e.preventDefault();
+          zoomBy(e.deltaY < 0 ? 1 : -1);
+        }}
+      >
         <div
           onMouseDown={(e) => {
             if (!drawing) return;
@@ -126,8 +176,8 @@ export function MapBoard() {
             position: 'relative',
             flex: 'none',
             margin: 'auto',
-            width: GRID_W * CELL,
-            height: GRID_H * CELL,
+            width: GW * CELL,
+            height: GH * CELL,
             backgroundColor: '#15181d',
             backgroundImage: `linear-gradient(${C.field} 1px,transparent 1px),linear-gradient(90deg,${C.field} 1px,transparent 1px)`,
             backgroundSize: `${CELL}px ${CELL}px`,
@@ -137,8 +187,36 @@ export function MapBoard() {
           }}
         >
           {state.rooms.map((r) => (
-            <RoomTile key={r.id} room={r} />
+            <RoomTile key={r.id} room={r} cell={CELL} />
           ))}
+          {state.tool === 'select' &&
+            links.map((l) => {
+              const spec = state.doors[l.key];
+              const info = doorInfo(spec?.kind ?? 'open');
+              return (
+                <button
+                  key={l.key}
+                  title={`${l.a.name} ↔ ${l.b.name}: ${info.label}${spec?.flag ? ` (flag ${spec.flag})` : ''}. Click to change`}
+                  aria-label={`Doorway ${l.a.name} to ${l.b.name}: ${info.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cycleDoor(l.key, e.shiftKey);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: l.x * CELL - 4,
+                    top: l.y * CELL - CELL * 0.5 - 5,
+                    width: 8,
+                    height: 10,
+                    padding: 0,
+                    borderRadius: 2,
+                    border: `1px solid ${spec ? info.color : C.faint}`,
+                    background: spec ? info.color : C.bg,
+                    cursor: 'pointer',
+                  }}
+                />
+              );
+            })}
           {draft && (
             <div
               style={{
@@ -160,13 +238,15 @@ export function MapBoard() {
   );
 }
 
-function RoomTile({ room: r }: { room: Room }) {
-  const { state, analysis, world, hatchUnreachable, set, place, deleteRoom } = useEditor();
+function RoomTile({ room: r, cell: CELL }: { room: Room; cell: number }) {
+  const { state, check, world, hatchUnreachable, set, place, deleteRoom } = useEditor();
   const wr = world.find((w) => w.id === r.id);
   const corridor = r.w === 1 || r.h === 1;
   const selected = state.selRoom === r.id;
-  const unreachable = hatchUnreachable && !analysis.reached.has(r.id);
+  const unreachable = hatchUnreachable && !check.busy && !check.reached.has(r.id);
   const nodes = state.showItems ? state.nodes.filter((n) => n.room === r.id) : [];
+  const area = state.areas.find((a) => a.id === r.area) ?? state.areas[0];
+  const ents = state.showItems ? (r.entities ?? []) : [];
 
   return (
     <div
@@ -207,16 +287,16 @@ function RoomTile({ room: r }: { room: Room }) {
               ? '#272c34'
               : '#2e343d',
           border: `1px solid ${selected ? C.accent : unreachable ? 'rgba(255,107,107,.5)' : '#464d59'}`,
-          boxShadow: selected ? '0 0 0 2px rgba(240,180,76,.3)' : 'none',
+          boxShadow: selected ? '0 0 0 2px rgba(240,180,76,.3)' : `inset 3px 0 0 ${area?.color ?? 'transparent'}`,
         }}
       />
-      {wr && <RoomThumb room={wr} />}
-      {r.w >= 3 && r.h >= 2 && (
+      {wr && <RoomThumb room={wr} cell={CELL} />}
+      {r.w >= 3 && r.h >= 2 && CELL >= 16 && (
         <div
           style={{
             position: 'absolute',
             top: 5,
-            left: 7,
+            left: 8,
             right: 6,
             font: `500 11px ${SANS}`,
             color: C.textSoft,
@@ -233,15 +313,38 @@ function RoomTile({ room: r }: { room: Room }) {
         {nodes.map((n) => (
           <NodeChip key={n.id} node={n} />
         ))}
+        {ents
+          .filter((e) => e.type === 'save' || e.type === 'boss' || e.type === 'recharge' || e.type === 'map' || e.type === 'exit')
+          .map((e) => (
+            <span
+              key={e.id}
+              title={e.type}
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 3,
+                display: 'grid',
+                placeItems: 'center',
+                background: e.type === 'boss' ? '#ff8a5c' : e.type === 'save' ? '#4fd1a5' : e.type === 'recharge' ? '#ff6fae' : e.type === 'exit' ? '#4fd1a5' : '#7aa2ff',
+                color: C.bg,
+                font: `700 8.5px ${MONO}`,
+                pointerEvents: 'none',
+              }}
+            >
+              {e.type === 'boss' ? 'B' : e.type === 'save' ? 'S' : e.type === 'recharge' ? 'R' : e.type === 'exit' ? 'X' : 'M'}
+            </span>
+          ))}
       </div>
     </div>
   );
 }
 
-/** Faint picture of the room's actual tiles, so painted rooms read on the map. */
-function RoomThumb({ room }: { room: WorldRoom }) {
+/** Faint picture of the room's tiles; with the reach overlay, tiles the player can reach are tinted. */
+function RoomThumb({ room, cell }: { room: WorldRoom; cell: number }) {
+  const { state, check } = useEditor();
   const ref = useRef<HTMLCanvasElement>(null);
-  const px = CELL / TILES_PER_CELL;
+  const px = Math.max(1, Math.round(cell / TILES_PER_CELL));
+  const res = state.showReach ? check.solved?.result : undefined;
   useEffect(() => {
     const ctx = ref.current?.getContext('2d');
     if (!ctx) return;
@@ -249,11 +352,28 @@ function RoomThumb({ room }: { room: WorldRoom }) {
     for (let y = 0; y < room.th; y++)
       for (let x = 0; x < room.tw; x++) {
         const t = room.g[y * room.tw + x];
+        if (res) {
+          const wx = room.tx + x;
+          const wy = room.ty + y;
+          if (wx < res.W && wy < res.H && res.covered[wy * res.W + wx]) {
+            ctx.fillStyle = 'rgba(79,209,165,.35)';
+            ctx.fillRect(x * px, y * px, px, px);
+          }
+        }
         if (t === Tile.Empty) continue;
-        ctx.fillStyle = t === Tile.Spikes ? 'rgba(255,107,107,.45)' : t === Tile.Platform ? 'rgba(223,226,231,.22)' : 'rgba(223,226,231,.1)';
+        ctx.fillStyle =
+          t === Tile.Spikes || t === Tile.Lava
+            ? 'rgba(255,107,107,.45)'
+            : t === Tile.Water
+              ? 'rgba(63,134,214,.4)'
+              : t === Tile.Platform
+                ? 'rgba(223,226,231,.22)'
+                : t >= Tile.ShotBlock
+                  ? 'rgba(240,180,76,.3)'
+                  : 'rgba(223,226,231,.1)';
         ctx.fillRect(x * px, y * px, px, t === Tile.Platform ? 1 : px);
       }
-  }, [room, px]);
+  }, [room, px, res]);
   return (
     <canvas
       ref={ref}

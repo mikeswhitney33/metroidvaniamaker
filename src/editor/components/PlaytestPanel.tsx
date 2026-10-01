@@ -1,11 +1,11 @@
 import { useEditor } from '../context';
 import { C, MONO, SANS, sectionLabel } from '../ui';
 
-const MINIMAP_CELL = 9;
 
 /** Right panel while playtesting: minimap and run log. */
 export function PlaytestPanel() {
   const { state } = useEditor();
+  const cell = Math.max(3, Math.floor(Math.min(288 / state.grid.w, 200 / state.grid.h)));
   return (
     <aside
       style={{
@@ -25,8 +25,8 @@ export function PlaytestPanel() {
         <div
           style={{
             position: 'relative',
-            width: 288,
-            height: 162,
+            width: state.grid.w * cell,
+            height: state.grid.h * cell,
             background: C.bg,
             border: `1px solid ${C.line}`,
             borderRadius: 4,
@@ -40,12 +40,13 @@ export function PlaytestPanel() {
                 key={r.id}
                 style={{
                   position: 'absolute',
-                  left: r.x * MINIMAP_CELL,
-                  top: r.y * MINIMAP_CELL,
-                  width: r.w * MINIMAP_CELL - 1,
-                  height: r.h * MINIMAP_CELL - 1,
+                  left: r.x * cell,
+                  top: r.y * cell,
+                  width: r.w * cell - 1,
+                  height: r.h * cell - 1,
                   borderRadius: 1,
-                  background: current ? C.accent : visited ? C.faint : '#22262d',
+                  background: current ? C.accent : visited ? (state.areas.find((a) => a.id === r.area) ?? state.areas[0])?.color ?? C.faint : '#22262d',
+                  opacity: current || !visited ? 1 : 0.6,
                   border: visited || current ? 'none' : `1px solid ${C.line}`,
                 }}
               />

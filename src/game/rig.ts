@@ -130,6 +130,7 @@ export function drawPlayerRig(ctx: CanvasRenderingContext2D, p: Player, x: numbe
       swing = side * w * 0.15;
       lift = legH * (side > 0 ? 0.35 : 0.15);
     } else if (crouch) swing = side * w * 0.2;
+    else swing = side * w * 0.12;
     ctx.fillStyle = side > 0 ? col.suit : shade(col.suit, 0.75);
     ctx.fillRect(cx - w * 0.17 + swing * f, hip, w * 0.34, legH - lift);
     ctx.fillStyle = shade(col.suit, 0.5);

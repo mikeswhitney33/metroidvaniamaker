@@ -1,14 +1,18 @@
-import { isKey } from '../../model/graph';
 import { useEditor } from '../context';
-import { C, MONO, SANS, sectionLabel, swatch, plural } from '../ui';
+import { C, MONO, SANS, sectionLabel, plural, toggle } from '../ui';
 
+const KIND_ICON: Record<string, string> = { key: '◆', expansion: '+', boss: 'B', trigger: '!', exit: 'X' };
+
+/** Validation: whether the game can be finished, what blocks it, and the route the solver found. */
 export function ValidateTab() {
-  const { state, analysis: a, byId, roomById, colorOf, openIssue } = useEditor();
-  const keys = state.nodes.filter(isKey).length;
-  const bad = a.errors > 0;
+  const { state, check, roomById, openIssue, set } = useEditor();
+  const r = check.solved?.result;
+  const bad = check.errors > 0 || (r && !r.beatable);
+  const tricks = check.solved?.tricks ?? [];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div
+        role="status"
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -20,19 +24,25 @@ export function ValidateTab() {
           color: bad ? C.badSoft : C.ok,
         }}
       >
-        <div style={{ font: `600 15px ${SANS}` }}>{bad ? 'Not beatable' : 'Beatable'}</div>
+        <div style={{ font: `600 15px ${SANS}`, display: 'flex', justifyContent: 'space-between' }}>
+          {bad ? 'Not beatable' : 'Beatable'}
+          {check.busy && <span style={{ font: `400 11px ${MONO}`, color: C.muted }}>checking…</span>}
+        </div>
         <div style={{ font: `400 12px/1.45 ${SANS}`, color: C.textSoft }}>
           {bad
-            ? `${plural(a.errors, 'blocking issue')}. Fix them before generating.`
-            : `All ${keys} keys reachable in order. ${a.reached.size} of ${state.rooms.length} rooms reached.`}
+            ? `${plural(check.errors, 'blocking issue')}. The solver walks the actual tiles with the moves each item gives.`
+            : `Every required item can be reached in ${plural(r?.waves.length ?? 0, 'stage')}. ${check.reached.size} of ${state.rooms.length} rooms can be entered.`}
         </div>
       </div>
+      <button style={{ ...toggle(state.showReach), flex: 'none' }} onClick={() => set((s) => ({ showReach: !s.showReach, editRoom: null }))}>
+        {state.showReach ? 'Hide' : 'Show'} reachable tiles on the map
+      </button>
 
-      {a.issues.length > 0 && (
+      {check.issues.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={sectionLabel}>Issues</div>
-          {a.issues.map((issue, i) => (
-            <div
+          {check.issues.map((issue, i) => (
+            <button
               key={i}
               onClick={() => openIssue(issue)}
               style={{
@@ -46,51 +56,58 @@ export function ValidateTab() {
                 cursor: 'pointer',
                 font: `400 12.5px/1.45 ${SANS}`,
                 color: C.text,
+                textAlign: 'left',
               }}
             >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  flex: 'none',
-                  marginTop: 5,
-                  borderRadius: '50%',
-                  background: issue.sev === 'error' ? C.bad : C.accent,
-                }}
-              />
+              <span style={{ width: 8, height: 8, flex: 'none', marginTop: 5, borderRadius: '50%', background: issue.sev === 'error' ? C.bad : C.accent }} />
               <span style={{ flex: 1, textWrap: 'pretty' }}>{issue.msg}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {r && r.waves.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={sectionLabel}>Route by stage</div>
+          {r.waves.map((ids, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10 }}>
+              <span style={{ width: 18, font: `500 11px/22px ${MONO}`, color: C.accent }}>{i + 1}</span>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {ids.map((id) => {
+                  const t = r.targets.find((x) => x.id === id);
+                  if (!t) return null;
+                  return (
+                    <div key={id} style={{ display: 'flex', gap: 8, font: `400 12.5px/22px ${SANS}`, color: t.kind === 'expansion' ? C.muted : C.text }}>
+                      <span style={{ width: 12, font: `700 10px/22px ${MONO}`, color: C.dim }}>{KIND_ICON[t.kind]}</span>
+                      <span style={{ flex: 1 }}>{t.label}</span>
+                      <span style={{ font: `400 11.5px/22px ${SANS}`, color: C.dim }}>{roomById[t.room]?.name ?? ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={sectionLabel}>Critical path</div>
-        {a.order.map((id, i) => {
-          const n = byId[id];
-          const room = n.room ? roomById[n.room] : undefined;
-          return (
-            <div
-              key={id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                height: 30,
-                padding: '0 4px',
-                borderBottom: '1px solid #22262d',
-                font: `400 12.5px ${SANS}`,
-                color: C.text,
-              }}
-            >
-              <span style={{ width: 18, font: `500 11px ${MONO}`, color: C.accent }}>{i + 1}</span>
-              <span style={swatch(n, colorOf(n))} />
-              <span style={{ flex: 1 }}>{n.label}</span>
-              <span style={{ font: `400 11.5px ${SANS}`, color: C.muted }}>{room?.name ?? ''}</span>
-            </div>
-          );
-        })}
-      </div>
+      {tricks.some((t) => t.earlier.length || t.needed) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={sectionLabel}>Sequence breaks</div>
+          {tricks
+            .filter((t) => t.earlier.length || t.needed)
+            .map((t) => (
+              <div key={t.trick} style={{ padding: '8px 10px', borderRadius: 5, border: `1px solid ${C.line}`, font: `400 12px/1.5 ${SANS}`, color: C.textSoft }}>
+                <div style={{ color: C.text, font: `500 12.5px ${SANS}` }}>{t.name}</div>
+                {t.needed && <div style={{ color: C.accent }}>Your map is only beatable with this trick.</div>}
+                {t.earlier.map((e) => (
+                  <div key={e.label}>
+                    {e.label}: stage {e.from < 0 ? 'never' : e.from + 1} → {e.to + 1}
+                  </div>
+                ))}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
