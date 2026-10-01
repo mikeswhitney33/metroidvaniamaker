@@ -384,8 +384,9 @@ function drawHud(game: Game, ctx: CanvasRenderingContext2D, cw: number, ch: numb
   const e = Math.ceil(game.run.energy);
   const tanks = Math.floor((game.maxEnergy - 99) / 100);
   const full = Math.floor(Math.max(0, e - 1) / 100);
+  const ammo = (['missiles', 'supers', 'novas'] as const).filter((k) => game.maxAmmo(k) > 0);
   ctx.fillStyle = 'rgba(8,9,12,.72)';
-  ctx.fillRect(10, 10, 230, 44);
+  ctx.fillRect(10, 10, Math.max(84, 40 + Math.min(tanks, 7) * 10) + 8 + ammo.length * 44, 44);
   ctx.font = `700 12px ${FONT}`;
   ctx.textAlign = 'left';
   ctx.fillStyle = '#9aa1ad';
@@ -397,10 +398,8 @@ function drawHud(game: Game, ctx: CanvasRenderingContext2D, cw: number, ch: numb
     ctx.fillStyle = i < full ? '#ff6fae' : '#3a2f38';
     ctx.fillRect(40 + (i % 7) * 10, i < 7 ? 16 : 24, 8, 6);
   }
-  let x = 100;
-  (['missiles', 'supers', 'novas'] as const).forEach((k) => {
-    const max = game.maxAmmo(k);
-    if (!max) return;
+  let x = Math.max(84, 40 + Math.min(tanks, 7) * 10) + 16;
+  ammo.forEach((k) => {
     const sel = game.weapon === k;
     ctx.fillStyle = sel ? '#ffd166' : '#2a2f37';
     ctx.fillRect(x, 16, 40, 32);

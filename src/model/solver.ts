@@ -58,6 +58,8 @@ export interface SolveOptions {
 
 const OUT = 255;
 const HM = 15;
+/** Floor blocks a shot aimed down can break. */
+const BREAK_DOWN = new Set<number>([Tile.ShotBlock, Tile.MissileBlock, Tile.SuperBlock]);
 
 interface Grid {
   W: number;
@@ -295,6 +297,11 @@ function explore(g: Grid, c: ProjectContent, have: Have, tricks: Set<string>, st
           push(x, y, 0, 0, 0);
           if (roll && has('bomb')) push(x, y, 1, reach.bomb, 0);
         }
+        // Breaking the floor: bombs while rolled, shots aimed down, or a crumbling ledge.
+        const below = (y + 1) * W + x;
+        const t = tile[below];
+        if (pass[below] && door[below] < 0 && (t === Tile.Crumble || BREAK_DOWN.has(t) || (form === 1 && (t === Tile.BombBlock || t === Tile.NovaBlock))))
+          push(x, y + 1, form, 0, 0);
       }
     }
     if (up > 0) {

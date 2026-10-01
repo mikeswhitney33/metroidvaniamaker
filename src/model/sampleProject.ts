@@ -46,6 +46,11 @@ export const PRESETS: StylePreset[] = [
   { id: 'neon', name: 'Neon Ruin', bg: '#0a0e19', bg2: '#121b33', wall: '#1d2a4c', edge: '#3ee6d0', player: '#ff4fa3' },
   { id: 'verdant', name: 'Verdant Deep', bg: '#0e1812', bg2: '#16281c', wall: '#2e4a35', edge: '#9fd37f', player: '#f2e3a0' },
   { id: 'ink', name: '1-bit Ink', bg: '#0d0d0d', bg2: '#181818', wall: '#d9d4c7', edge: '#ffffff', player: '#ff5a3c' },
+  { id: 'ember', name: 'Ember Forge', bg: '#1a0d0a', bg2: '#2a140e', wall: '#5a2e22', edge: '#ff9a5c', player: '#f0e6d2' },
+  { id: 'mire', name: 'Mire', bg: '#0f140c', bg2: '#1a2214', wall: '#3d4a2a', edge: '#b8c96a', player: '#f0e6d2' },
+  { id: 'dusk', name: 'Dusk Wastes', bg: '#171425', bg2: '#251f3a', wall: '#4d4366', edge: '#e8a87c', player: '#f0e6d2' },
+  { id: 'ruins', name: 'Sunken Ruins', bg: '#10141a', bg2: '#1a222c', wall: '#56606e', edge: '#d9c27a', player: '#f0e6d2' },
+  { id: 'core', name: 'Heartcore', bg: '#0c0a12', bg2: '#1c1028', wall: '#3a2a4e', edge: '#e05cff', player: '#f0e6d2' },
 ];
 
 export const presetById = (id: string): StylePreset => PRESETS.find((p) => p.id === id) ?? PRESETS[0];
