@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SAMPLES } from '../../model/samples';
 import { useEditor } from '../context';
 import { C, MONO, SANS, secondaryButton } from '../ui';
 
@@ -6,7 +7,7 @@ const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
 
 /** Top-bar Project menu: new, sample, open and save to a file. */
 export function ProjectMenu() {
-  const { newProject, loadSample, openFile, saveFile } = useEditor();
+  const { newProject, loadSample, openFile, saveFile, exportGame } = useEditor();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -26,9 +27,10 @@ export function ProjectMenu() {
 
   const items: [string, string, () => void][] = [
     ['New project', '', newProject],
-    ['Open Hollow Depths sample', '', loadSample],
+    ...SAMPLES.map((x): [string, string, () => void] => [`Open ${x.name}`, 'sample', () => loadSample(x.id)]),
     ['Open file…', '', () => input.current?.click()],
     ['Save to file', `${MOD}S`, saveFile],
+    ['Export playable HTML', '', exportGame],
   ];
 
   return (
@@ -49,7 +51,7 @@ export function ProjectMenu() {
             top: 32,
             left: 0,
             zIndex: 20,
-            minWidth: 220,
+            minWidth: 250,
             padding: 4,
             background: C.panelDeep,
             border: `1px solid ${C.lineStrong}`,

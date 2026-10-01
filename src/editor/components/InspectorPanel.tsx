@@ -13,8 +13,8 @@ const TABS: [Tab, string][] = [
 
 /** Right panel while authoring. */
 export function InspectorPanel() {
-  const { state, analysis, set } = useEditor();
-  const count = analysis.issues.length;
+  const { state, check, set } = useEditor();
+  const count = check.issues.length;
   return (
     <aside
       style={{
@@ -65,7 +65,7 @@ export function InspectorPanel() {
                   height: 16,
                   padding: '0 4px',
                   borderRadius: 8,
-                  background: analysis.errors ? C.bad : C.accent,
+                  background: check.errors ? C.bad : C.accent,
                   color: C.bar,
                   font: `700 10px/16px ${MONO}`,
                   display: 'inline-block',

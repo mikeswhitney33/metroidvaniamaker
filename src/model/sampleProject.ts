@@ -25,7 +25,7 @@ export const SAMPLE_ROOMS: Room[] = [
 
 export const SAMPLE_NODES: GraphNode[] = [
   { id: 'start', kind: 'start', label: 'Start', room: 'A', req: [] },
-  { id: 'dash', kind: 'key', label: 'Dash Boots', color: '#5ec4e8', room: 'E', req: ['start'] },
+  { id: 'dash', kind: 'key', label: 'Dash Boots', color: '#5ec4e8', room: 'E', req: ['start'], ability: 'dash' },
   { id: 'gDash', kind: 'gate', label: 'Collapsed Wall', room: 'F', req: ['dash'] },
   { id: 'grapple', kind: 'key', label: 'Grapple Hook', color: '#b48cff', room: 'G', req: ['gDash'] },
   { id: 'gGrapple', kind: 'gate', label: 'Hook Anchors', room: 'H', req: ['grapple'] },
@@ -33,7 +33,7 @@ export const SAMPLE_NODES: GraphNode[] = [
   { id: 'gFlood', kind: 'gate', label: 'Flooded Drain', room: 'N', req: ['dive'] },
   { id: 'red', kind: 'key', label: 'Red Sigil', color: '#ff6b6b', room: 'O', req: ['gFlood'] },
   { id: 'gRed', kind: 'gate', label: 'Red Door', room: 'J', req: ['red'] },
-  { id: 'djump', kind: 'key', label: 'Double Jump', color: '#f0b44c', room: 'K', req: ['gRed'] },
+  { id: 'djump', kind: 'key', label: 'Double Jump', color: '#f0b44c', room: 'K', req: ['gRed'], ability: 'djump' },
   { id: 'gUp', kind: 'gate', label: 'Updraft Gap', room: 'L', req: ['djump', 'grapple'] },
   { id: 'boss', kind: 'boss', label: 'The Warden', room: 'M', req: ['gUp'] },
 ];

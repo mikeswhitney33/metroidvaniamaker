@@ -67,8 +67,8 @@ export function clearLegacyImages(ids: string[]) {
 }
 
 /** Saves the project to the author's computer as a .vwm.json download. */
-export function downloadText(text: string, fileName: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+export function downloadText(text: string, fileName: string, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement('a');
   a.href = url;
   a.download = fileName;

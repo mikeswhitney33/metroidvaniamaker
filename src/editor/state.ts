@@ -2,12 +2,15 @@ import { sampleContent, type ProjectContent } from '../model/project';
 import { Tile, type TileKind } from '../model/tiles';
 import type { TileSize } from '../model/types';
 import { emptyHistory, type History } from './history';
+import { loadPrefs, type Prefs } from './prefs';
 
 export type { TileSize };
 
 export type Mode = 'author' | 'play';
 export type Tool = 'select' | 'draw' | 'erase';
-export type Tab = 'graph' | 'style' | 'validate';
+export type Tab = 'graph' | 'rules' | 'style' | 'sprites' | 'validate';
+/** What the room painter places: tiles, or entities and item positions. */
+export type PaintLayer = 'tiles' | 'entities';
 export type Source = 'image' | 'tiled' | 'draw';
 
 export interface Draft {
@@ -17,8 +20,8 @@ export interface Draft {
   y1: number;
 }
 
-/** Generate dialog: either blocked by validation errors, or running with a progress percentage. */
-export type GenState = { blocked: true; errors: number } | { blocked: false; pct: number };
+/** Shown when Playtest is pressed on a map with blocking issues. */
+export type GenState = { blocked: true; errors: number };
 
 export interface LogEntry {
   t: string;
@@ -41,10 +44,17 @@ export interface EditorState extends ProjectContent {
   /** Room open in the tile painter, or null for the map. */
   editRoom: string | null;
   paintTile: TileKind;
+  paintLayer: PaintLayer;
+  /** Entity type the painter places, or a node id to position (`node:<id>`). */
+  placing: string;
+  selEntity: string | null;
+  /** Map zoom: pixels per cell. */
+  zoom: number;
+  /** Show where the solver says the player can reach. */
+  showReach: boolean;
   gen: GenState | null;
-  /** Bumped on every content edit, so an unchanged map can skip regeneration. */
+  /** Bumped on every content edit. */
   rev: number;
-  builtRev: number;
   playRoom: string;
   visited: string[];
   have: string[];
@@ -52,6 +62,9 @@ export interface EditorState extends ProjectContent {
   toast: string | null;
   history: History;
   saveStatus: SaveStatus;
+  prefs: Prefs;
+  /** A saved run exists for this project, so Playtest can continue it. */
+  hasRun: boolean;
 }
 
 export const initialState: EditorState = {
@@ -67,9 +80,13 @@ export const initialState: EditorState = {
   draft: null,
   editRoom: null,
   paintTile: Tile.Solid,
+  paintLayer: 'tiles',
+  placing: 'enemy',
+  selEntity: null,
+  zoom: 24,
+  showReach: false,
   gen: null,
   rev: 0,
-  builtRev: -1,
   playRoom: 'A',
   visited: ['A'],
   have: [],
@@ -77,4 +94,6 @@ export const initialState: EditorState = {
   toast: null,
   history: emptyHistory,
   saveStatus: 'loading',
+  prefs: loadPrefs(),
+  hasRun: false,
 };

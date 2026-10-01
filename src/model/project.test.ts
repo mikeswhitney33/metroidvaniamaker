@@ -9,7 +9,7 @@ import {
   sampleContent,
   toProjectFile,
 } from './project';
-import { roughIn } from '../game/world';
+import { roughIn } from '../model/world';
 import { encodeTiles, Tile } from './tiles';
 
 const roundTrip = (c = sampleContent()) => parseProject(JSON.stringify(toProjectFile(c)));

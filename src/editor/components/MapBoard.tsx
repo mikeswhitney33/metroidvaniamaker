@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MouseEvent } from 'react';
-import type { WorldRoom } from '../../game/world';
+import type { WorldRoom } from '../../model/world';
 import { Tile, TILES_PER_CELL } from '../../model/tiles';
 import { GRID_H, GRID_W } from '../../model/sampleProject';
 import type { Room } from '../../model/types';

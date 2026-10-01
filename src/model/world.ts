@@ -1,9 +1,21 @@
-import { adj } from '../model/graph';
-import { decodeTiles, isFloor, Tile, TILES_PER_CELL, tileSize } from '../model/tiles';
-import type { Room } from '../model/types';
+import { linkKey } from './entities';
+import { adj } from './graph';
+import { decodeTiles, isFloor, Tile, TILES_PER_CELL, tileSize } from './tiles';
+import type { DoorSpec, Room } from './types';
 
 export { TILES_PER_CELL };
 const T = TILES_PER_CELL;
+
+/** A hatch in a side doorway: a 1-tile column in this room's wall. */
+export interface WorldDoor {
+  /** Local tile column and the top of its 3-tile span. */
+  x: number;
+  y: number;
+  /** Room on the other side. */
+  to: string;
+  link: string;
+  spec: DoorSpec;
+}
 
 /** A room baked into a tile grid of `Tile` values. */
 export interface WorldRoom extends Room {
@@ -12,7 +24,11 @@ export interface WorldRoom extends Room {
   tw: number;
   th: number;
   g: Uint8Array;
+  doors: WorldDoor[];
 }
+
+/** Height of a side doorway, in tiles. */
+export const DOOR_H = 3;
 
 const setter = (g: Uint8Array, tw: number, th: number) => (x: number, y: number, v: number) => {
   if (x >= 0 && y >= 0 && x < tw && y < th) g[y * tw + x] = v;
@@ -48,11 +64,11 @@ export function baseTiles(r: Room): Uint8Array {
   return (r.tiles && decodeTiles(r.tiles, r)) || roughIn(r);
 }
 
-/** Turns editor rooms into tile rooms, carving doorways where rooms touch. */
-export function buildWorld(rooms: Room[]): WorldRoom[] {
+/** Turns editor rooms into tile rooms, carving doorways where rooms touch; side doorways get their hatches. */
+export function buildWorld(rooms: Room[], doors: Record<string, DoorSpec> = {}): WorldRoom[] {
   const W: WorldRoom[] = rooms.map((r) => {
     const { tw, th } = tileSize(r);
-    return { ...r, tx: r.x * T, ty: r.y * T, tw, th, g: baseTiles(r).slice() };
+    return { ...r, tx: r.x * T, ty: r.y * T, tw, th, g: baseTiles(r).slice(), doors: [] };
   });
 
   W.forEach((a) =>
@@ -68,6 +84,9 @@ export function buildWorld(rooms: Room[]): WorldRoom[] {
         const hi = j.hi * T - a.ty;
         for (let i = 0; i <= 4; i++) for (let y = hi - 4; y <= hi - 2; y++) set(lx + dir * i, y, 0);
         if (hi - 1 < a.th - 1) for (let i = 1; i <= 4; i++) set(lx + dir * i, hi - 1, 1);
+        const link = linkKey(a.id, b.id);
+        const spec = doors[link];
+        if (spec && spec.kind !== 'open') a.doors.push({ x: lx, y: hi - 4, to: b.id, link, spec });
       } else {
         // Floor/ceiling hatch across the shared span.
         const ly = j.at === a.y ? 0 : a.th - 1;

@@ -25,10 +25,10 @@ const iconButton = (enabled: boolean) => ({
 });
 
 export function TopBar() {
-  const { state, analysis, set, edit, generate, undo, redo } = useEditor();
+  const { state, check, set, edit, playtest, leavePlay, undo, redo } = useEditor();
   const canUndo = state.history.past.length > 0;
   const canRedo = state.history.future.length > 0;
-  const status = statusSummary(analysis);
+  const status = statusSummary(check);
   const modes = [
     ['author', 'Author'],
     ['play', 'Playtest'],
@@ -88,7 +88,7 @@ export function TopBar() {
           <button
             key={id}
             style={seg(state.mode === id)}
-            onClick={() => (id === 'play' ? generate() : set({ mode: 'author' }))}
+            onClick={() => (id === 'play' ? state.mode !== 'play' && playtest() : leavePlay())}
           >
             {label}
           </button>
@@ -136,7 +136,7 @@ export function TopBar() {
       </button>
       <button
         className="vw-btn-primary"
-        onClick={generate}
+        onClick={() => playtest()}
         style={{
           height: 30,
           padding: '0 14px',
@@ -148,7 +148,7 @@ export function TopBar() {
           cursor: 'pointer',
         }}
       >
-        Generate build
+        Playtest
       </button>
     </header>
   );
