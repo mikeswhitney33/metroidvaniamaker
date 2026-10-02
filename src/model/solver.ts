@@ -1,6 +1,6 @@
 import { abilityById, BASE_CAPS, EXPANSIONS, meets, TRICKS, type ExpansionKind, type Have } from './abilities';
-import { doorReq, prop } from './entities';
-import { isKey, type Issue } from './graph';
+import { doorInfo, doorReq, linkKey, prop } from './entities';
+import { adj, isKey, type Issue } from './graph';
 import { jumpReach } from './physics';
 import type { ProjectContent } from './project';
 import { isFloor, isSolid, Tile } from './tiles';
@@ -42,6 +42,8 @@ export interface SolveResult {
   rooms: Set<string>;
   /** Wave at which each hatch link first opens. */
   doorStep: Record<string, number>;
+  /** Wave at which each room can first be entered. */
+  roomStep: Record<string, number>;
   issues: Issue[];
   /** World size in tiles, and the tiles the player's body can reach by the end (row-major). */
   W: number;
@@ -354,10 +356,11 @@ export function solve(c: ProjectContent, opts: SolveOptions = {}): SolveResult {
   const stepOf: Record<string, number> = {};
   const waves: string[][] = [];
   const doorStep: Record<string, number> = {};
+  const roomStep: Record<string, number> = {};
   const start = startTile(c, world, g.W);
   const roomIds = world.map((r) => r.id);
   const reached = new Set<string>();
-  const empty: SolveResult = { beatable: false, stepOf, waves, targets, rooms: reached, doorStep, issues, W: g.W, H: g.H, covered: new Uint8Array(g.W * g.H) };
+  const empty: SolveResult = { beatable: false, stepOf, waves, targets, rooms: reached, doorStep, roomStep, issues, W: g.W, H: g.H, covered: new Uint8Array(g.W * g.H) };
   if (start === null) {
     issues.push({ sev: 'error', msg: 'No start room. Drag the Start node onto a room.' });
     return empty;
@@ -369,6 +372,10 @@ export function solve(c: ProjectContent, opts: SolveOptions = {}): SolveResult {
     const have = haveFrom(c, done, targets);
     const reach = explore(g, c, have, tricks, start);
     perWave.push({ reach, have });
+    for (let i = 0; i < g.W * g.H; i++) {
+      const r = g.room[i];
+      if (r >= 0 && reach.covered[i] && roomStep[roomIds[r]] === undefined) roomStep[roomIds[r]] = wave;
+    }
     g.doors.forEach((d) => {
       if (doorStep[d.link] === undefined && meets(d.req, have)) doorStep[d.link] = wave;
     });
@@ -401,15 +408,22 @@ export function solve(c: ProjectContent, opts: SolveOptions = {}): SolveResult {
         : { sev: 'error', msg: `${goal?.label ?? 'The goal'} can't be reached or defeated, so the game can't be finished.`, room: goal?.room ?? undefined, node: goal?.id },
     );
   }
+  const local = (t: Target) => {
+    const r = world.find((w) => w.id === t.room);
+    return r ? { x: t.x - r.tx, y: t.y - r.ty } : undefined;
+  };
   targets.forEach((t) => {
     if (done.has(t.id)) return;
-    if (t.kind === 'key') issues.push({ sev: 'error', msg: `${t.label} in ${roomName(t.room)} can't be reached with the moves available.`, room: t.room, node: t.node });
-    else if (t.kind === 'expansion') issues.push({ sev: 'warn', msg: `${t.label} in ${roomName(t.room)} can't be reached.`, room: t.room });
-    else if (t.kind === 'boss') issues.push({ sev: 'warn', msg: `${t.label} in ${roomName(t.room)} can't be reached or hurt.`, room: t.room });
-    else if (t.kind === 'trigger') issues.push({ sev: 'warn', msg: `${t.label} in ${roomName(t.room)} never fires.`, room: t.room });
+    const tile = local(t);
+    if (t.kind === 'key') issues.push({ sev: 'error', msg: `${t.label} in ${roomName(t.room)} can't be reached with the moves available.`, room: t.room, node: t.node, tile });
+    else if (t.kind === 'expansion') issues.push({ sev: 'warn', msg: `${t.label} in ${roomName(t.room)} can't be reached.`, room: t.room, tile });
+    else if (t.kind === 'boss') issues.push({ sev: 'warn', msg: `${t.label} in ${roomName(t.room)} can't be reached or hurt.`, room: t.room, tile });
+    else if (t.kind === 'trigger') issues.push({ sev: 'warn', msg: `${t.label} in ${roomName(t.room)} never fires.`, room: t.room, tile });
   });
+  const finalHave = last.have;
   c.rooms.forEach((r) => {
-    if (!reached.has(r.id)) issues.push({ sev: 'warn', msg: `${r.name} can't be entered by the end.`, room: r.id });
+    if (reached.has(r.id)) return;
+    issues.push({ sev: 'warn', msg: `${r.name} can't be entered by the end. ${whyUnreached(c, r.id, reached, finalHave)}`, room: r.id });
   });
 
   // Softlocks: at each stage, a room you can reach but can't leave toward that stage's progress.
@@ -449,7 +463,25 @@ export function solve(c: ProjectContent, opts: SolveOptions = {}): SolveResult {
     });
   }
 
-  return { beatable, stepOf, waves, targets, rooms: reached, doorStep, issues, W: g.W, H: g.H, covered: last.reach.covered };
+  return { beatable, stepOf, waves, targets, rooms: reached, doorStep, roomStep, issues, W: g.W, H: g.H, covered: last.reach.covered };
+}
+
+/** A hint for why a room is never entered: what blocks the way in from rooms the player does reach. */
+function whyUnreached(c: ProjectContent, roomId: string, reached: Set<string>, have: Have): string {
+  const room = c.rooms.find((r) => r.id === roomId)!;
+  const name = (id: string) => c.rooms.find((r) => r.id === id)?.name ?? id;
+  const blocked: string[] = [];
+  let openNeighbour: string | null = null;
+  c.rooms.forEach((o) => {
+    if (o.id === roomId || !reached.has(o.id) || !adj(room, o)) return;
+    const d = c.doors[linkKey(roomId, o.id)];
+    const req = d ? doorReq(d) : '';
+    if (d && d.kind !== 'open' && !meets(req, have)) blocked.push(`the ${doorInfo(d.kind).label.toLowerCase()} from ${name(o.id)} needs ${req || 'a flag'}`);
+    else openNeighbour ??= name(o.id);
+  });
+  if (blocked.length) return `Blocked: ${blocked.join('; ')}.`;
+  if (openNeighbour) return `The doorway from ${openNeighbour} is open, so check the tiles: a ledge too high, breakable blocks, or a gate node sealing it.`;
+  return 'No room the player reaches touches it.';
 }
 
 export interface TrickReport {

@@ -8,9 +8,14 @@ export interface Prefs {
   reducedFlash: boolean;
   muted: boolean;
   music: boolean;
+  /** Side panels hidden to give the map or painter more room. */
+  hideLeft: boolean;
+  hideRight: boolean;
+  /** Items a "play from here" run starts with. */
+  loadout: 'route' | 'all' | 'none';
 }
 
-export const DEFAULT_PREFS: Prefs = { bindings: DEFAULT_BINDINGS, assist: false, reducedFlash: false, muted: false, music: true };
+export const DEFAULT_PREFS: Prefs = { bindings: DEFAULT_BINDINGS, assist: false, reducedFlash: false, muted: false, music: true, hideLeft: false, hideRight: false, loadout: 'route' };
 
 const KEY = 'vaultwright.prefs';
 

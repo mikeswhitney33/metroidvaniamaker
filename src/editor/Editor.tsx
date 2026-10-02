@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sound } from '../game/audio';
 import { Game, STEP } from '../game/Game';
 import { Input } from '../game/input';
-import { clearRun, loadRun, saveKey } from '../game/run';
+import { clearRun, loadRun, newRun, runHave, saveKey, type RunData } from '../game/run';
+import { flagIssues, flagTable } from '../model/flags';
 import { analyze, autoPlaceKeys, colorOf, indexNodes, isKey, nextSeed } from '../model/graph';
+import { loadoutFor } from '../model/loadout';
 import {
   blankContent,
   CONTENT_KEYS,
@@ -16,9 +18,10 @@ import {
 } from '../model/project';
 import { presetById } from '../model/sampleProject';
 import { SAMPLES } from '../model/samples';
-import { TILE_INFO } from '../model/tiles';
-import { buildWorld } from '../model/world';
+import { buildWorld, floorSpot } from '../model/world';
 import { AuthorSidebar } from './components/AuthorSidebar';
+import { ImportDialog } from './components/ImportDialog';
+import { PainterSidebar } from './components/PainterSidebar';
 import { GenerateDialog } from './components/GenerateDialog';
 import { InspectorPanel } from './components/InspectorPanel';
 import { MapBoard } from './components/MapBoard';
@@ -31,10 +34,11 @@ import { Toast } from './components/Toast';
 import { TopBar } from './components/TopBar';
 import { EditorContext, type Check, type EditorApi } from './context';
 import { buildGameHtml, ExportError } from './exportHtml';
-import { record, redo, sameContent, undo } from './history';
-import { clearLegacyImages, downloadText, legacyImages, loadAutosave, saveAutosave } from './persist';
+import { emptyHistory, record, redo, sameContent, undo } from './history';
+import { clearLegacyImages, deleteProject, downloadText, legacyImages, loadCurrent, loadProject, newProjectId, saveProject } from './persist';
 import { savePrefs } from './prefs';
 import { useSolver } from './solver/useSolver';
+import type { Solved } from './solver/wire';
 import { initialState, type EditorState, type Tool } from './state';
 import { C } from './ui';
 
@@ -119,10 +123,13 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
     setState((s) => ({ ...s, log: [{ t, msg }, ...s.log].slice(0, 30) }));
   }, []);
 
-  /** Replaces the whole project as one undoable step. */
-  const replaceContent = useCallback(
-    (c: ProjectContent, msg: string) => {
-      setState((s) => ({ ...withContent(s, c), history: record(s.history, pickContent(s), undefined, Date.now()) }));
+  /**
+   * Opens other content as its own project. The project that was open stays in this
+   * browser's project list, so nothing is lost; undo history starts fresh.
+   */
+  const switchProject = useCallback(
+    (c: ProjectContent, msg: string, id: string = newProjectId()) => {
+      setState((s) => ({ ...withContent(s, c), projectId: id, history: emptyHistory, mode: 'author', returnTo: null }));
       flash(msg);
     },
     [flash],
@@ -138,12 +145,12 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
     async (file: File) => {
       try {
         const c = parseProject(await file.text());
-        replaceContent(c, `Opened ${c.name}`);
+        switchProject(c, `Opened ${c.name}`);
       } catch (e) {
         flash(e instanceof ProjectError ? `Couldn't open ${file.name}: ${e.message}` : `Couldn't read ${file.name}`);
       }
     },
-    [replaceContent, flash],
+    [switchProject, flash],
   );
 
   const exportGame = useCallback(async () => {
@@ -164,15 +171,15 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
   // Restore the last autosave once; until then, autosave stays off so it can't overwrite it.
   useEffect(() => {
     let live = true;
-    loadAutosave().then((saved) => {
+    loadCurrent().then((saved) => {
       if (!live) return;
       if (saved) {
-        setState((s) => ({ ...withContent(s, saved), saveStatus: 'saved' }));
+        setState((s) => ({ ...withContent(s, saved.content), projectId: saved.id, saveStatus: 'saved' }));
         return;
       }
       const images = legacyImages();
       legacyIds.current = Object.keys(images);
-      setState((s) => ({ ...s, images: { ...s.images, ...images }, saveStatus: 'saving' }));
+      setState((s) => ({ ...s, images: { ...s.images, ...images }, projectId: newProjectId(), saveStatus: 'saving' }));
     });
     return () => {
       live = false;
@@ -185,7 +192,7 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
     if (!loaded) return;
     set({ saveStatus: 'saving' });
     const t = window.setTimeout(() => {
-      saveAutosave(pickContent(stateRef.current)).then(
+      saveProject(stateRef.current.projectId, pickContent(stateRef.current)).then(
         () => {
           clearLegacyImages(legacyIds.current);
           legacyIds.current = [];
@@ -195,7 +202,7 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
       );
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(t);
-  }, [loaded, set, ...content]);
+  }, [loaded, set, state.projectId, ...content]);
 
   // Settings live in this browser.
   useEffect(() => {
@@ -212,7 +219,7 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
   useEffect(() => set({ hasRun: !!loadRun(runKey) }), [runKey, state.mode, set]);
 
   const startPlay = useCallback(
-    (resume = false) => {
+    (resume = false, from?: { run: RunData; returnTo: string | null }) => {
       const S = stateRef.current;
       if (!S.rooms.length) return;
       sound.current ??= new Sound();
@@ -221,8 +228,8 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
       sound.current.musicOn = S.prefs.music;
       const c = pickContent(S);
       const key = saveKey(S);
-      const run = resume ? (loadRun(key) ?? undefined) : undefined;
-      if (!resume) clearRun(key);
+      const run = from ? from.run : resume ? (loadRun(key) ?? undefined) : undefined;
+      if (!resume && !from) clearRun(key);
       let game: Game;
       try {
         game = new Game(
@@ -256,7 +263,8 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
           },
           {
             run,
-            saveKey: key,
+            saveKey: from ? null : key,
+            retry: from?.run,
             damageScale: S.prefs.assist ? 0.5 : 1,
             reducedFlash: S.prefs.reducedFlash,
             images: sheetImages(c),
@@ -271,19 +279,48 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
       input.current.clear();
       set({
         mode: 'play',
+        returnTo: from?.returnTo ?? null,
         gen: null,
         playRoom: game.room.id,
         visited: [...game.run.visited],
         have: [...game.run.keys],
-        log: [{ t: game.clock(), msg: run ? `Continued in ${game.room.name}` : `Spawned in ${game.room.name}` }],
+        log: [{ t: game.clock(), msg: from ? `Testing from ${game.room.name} with ${from.run.keys.length} items` : run ? `Continued in ${game.room.name}` : `Spawned in ${game.room.name}` }],
       });
     },
     [addLog, flash, set],
   );
 
+  /** Last "play from here" start, so Restart repeats it. */
+  const lastFrom = useRef<{ run: RunData; returnTo: string | null } | null>(null);
+
   const restart = useCallback(() => {
-    if (stateRef.current.mode === 'play') startPlay(false);
+    if (stateRef.current.mode === 'play') startPlay(false, lastFrom.current ?? undefined);
   }, [startPlay]);
+
+  const solvedRef = useRef<Solved | null>(null);
+
+  /** Playtest starting in a room (at a tile inside it, or its floor spot) with the chosen loadout. */
+  const playFrom = useCallback(
+    (roomId: string, at?: { x: number; y: number }) => {
+      const S = stateRef.current;
+      const c = pickContent(S);
+      const wr = buildWorld(S.rooms, S.doors).find((r) => r.id === roomId);
+      if (!wr) return;
+      const spot = at ? { x: wr.tx + at.x + 0.5, y: wr.ty + at.y + 1 } : floorSpot(wr);
+      const run = newRun(roomId, spot.x - 0.375, spot.y - 1.5);
+      const lo = loadoutFor(c, solvedRef.current?.result, roomId, S.prefs.loadout);
+      run.keys = lo.keys;
+      run.expansions = lo.expansions;
+      run.flags = lo.flags;
+      const have = runHave(c, run);
+      run.ammo = { ...have.max };
+      run.energy = have.maxEnergy;
+      const from = { run, returnTo: S.editRoom };
+      lastFrom.current = from;
+      startPlay(false, from);
+    },
+    [startPlay],
+  );
 
   /** Playtest: blocked by structural errors unless the author chooses to play anyway. */
   const playtest = useCallback(
@@ -294,6 +331,7 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
         set({ gen: { blocked: true, errors: a.errors } });
         return;
       }
+      lastFrom.current = null;
       startPlay(false);
     },
     [set, startPlay],
@@ -301,7 +339,7 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
 
   const leavePlay = useCallback(() => {
     sound.current?.setTheme(null);
-    set({ mode: 'author' });
+    set((s) => ({ mode: 'author', editRoom: s.returnTo && s.rooms.some((r) => r.id === s.returnTo) ? s.returnTo : s.editRoom, returnTo: null }));
   }, [set]);
 
   // Keyboard: tool shortcuts while authoring, controls while playtesting.
@@ -321,16 +359,8 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
         e.preventDefault();
         if (shortcut === 'save') saveFile();
         else step(shortcut);
-      } else if (down && S.editRoom) {
-        const t = TILE_INFO.find((k) => k.key && e.code === `Digit${k.key}`);
-        if (t && S.paintLayer === 'tiles') set({ paintTile: t.kind });
-        if (e.code === 'KeyT') set({ paintLayer: 'tiles' });
-        if (e.code === 'KeyN') set({ paintLayer: 'entities' });
-        if ((e.code === 'Delete' || e.code === 'Backspace') && S.selEntity) {
-          const id = S.selEntity;
-          edit((s) => ({ rooms: s.rooms.map((r) => (r.id === S.editRoom ? { ...r, entities: (r.entities ?? []).filter((x) => x.id !== id) } : r)), selEntity: null }));
-        }
-        if (e.code === 'Escape') set(S.selEntity ? { selEntity: null } : { editRoom: null });
+      } else if (S.editRoom) {
+        // The room painter handles its own keys.
       } else if (down) {
         const tool = TOOL_KEYS[e.code];
         if (tool) set({ tool });
@@ -382,100 +412,144 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
 
   const analysis = useMemo(() => analyze(state.rooms, state.nodes), [state.rooms, state.nodes]);
   const { solved, busy } = useSolver(pickContent(state), state.rev);
+  solvedRef.current = solved ?? solvedRef.current;
   const byId = useMemo(() => indexNodes(state.nodes), [state.nodes]);
   const roomById = useMemo(() => Object.fromEntries(state.rooms.map((r) => [r.id, r])), [state.rooms]);
   const world = useMemo(() => buildWorld(state.rooms, state.doors), [state.rooms, state.doors]);
+  const flagWarnings = useMemo(
+    () => flagIssues(flagTable({ rooms: state.rooms, doors: state.doors, nodes: state.nodes })),
+    [state.rooms, state.doors, state.nodes],
+  );
 
-  // Combined check: the lock & key graph, plus the tile-level solver once it has run.
+  // Combined check: the lock & key graph, the tile-level solver once it has run, and flag wiring.
   const check = useMemo<Check>(() => {
     const seen = new Set<string>();
-    const issues = [...analysis.issues, ...(solved?.result.issues ?? [])].filter((i) => !seen.has(i.msg) && !!seen.add(i.msg));
+    const issues = [...analysis.issues, ...(solved?.result.issues ?? []), ...flagWarnings].filter((i) => !seen.has(i.msg) && !!seen.add(i.msg));
     const errors = issues.filter((i) => i.sev === 'error').length;
     const r = solved?.result;
     const stepOf: Record<string, number> = {};
     if (r) r.targets.forEach((t) => t.node && r.stepOf[t.id] !== undefined && (stepOf[t.node] = r.stepOf[t.id] + 1));
     else analysis.order.forEach((id, i) => (stepOf[id] = i + 1));
     return { issues, errors, beatable: !errors && (r?.beatable ?? true), busy, reached: r?.rooms ?? analysis.reached, stepOf, solved };
-  }, [analysis, solved, busy]);
+  }, [analysis, solved, busy, flagWarnings]);
 
-  const api: EditorApi = {
-    state,
-    analysis,
-    check,
-    byId,
-    roomById,
-    world,
-    stepOf: check.stepOf,
-    palette: presetById(state.style),
-    hatchUnreachable,
-    canvasRef,
-    colorOf: (n) => colorOf(n, byId),
-    set,
-    edit,
-    flash,
-    place(nodeId, roomId) {
-      const n = byId[nodeId];
-      const r = roomById[roomId];
-      if (!n || !r) return;
-      edit((s) => ({ nodes: s.nodes.map((x) => (x.id === nodeId ? { ...x, room: roomId, pos: x.room === roomId ? x.pos : undefined } : x)), selNode: nodeId }));
-      flash(`Placed ${n.label} in ${r.name}`);
-    },
-    unplace(nodeId) {
-      edit((s) => ({ nodes: s.nodes.map((x) => (x.id === nodeId ? { ...x, room: null, pos: undefined } : x)) }));
-    },
-    deleteRoom(roomId) {
+  const deleteRooms = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      const gone = new Set(ids);
+      const names = stateRef.current.rooms.filter((r) => gone.has(r.id)).map((r) => r.name);
       edit((s) => ({
-        rooms: s.rooms.filter((r) => r.id !== roomId),
-        nodes: s.nodes.map((n) => (n.room === roomId ? { ...n, room: null, pos: undefined } : n)),
-        doors: Object.fromEntries(Object.entries(s.doors).filter(([k]) => !k.split('|').includes(roomId))),
+        rooms: s.rooms.filter((r) => !gone.has(r.id)),
+        nodes: s.nodes.map((n) => (n.room && gone.has(n.room) ? { ...n, room: null, pos: undefined } : n)),
+        doors: Object.fromEntries(Object.entries(s.doors).filter(([k]) => !k.split('|').some((id) => gone.has(id)))),
         selRoom: null,
+        selRooms: [],
       }));
+      flash(`Deleted ${names.length === 1 ? names[0] : `${names.length} rooms`}. Undo to bring ${names.length === 1 ? 'it' : 'them'} back`);
     },
-    autoPlace() {
-      const seed = nextSeed(state.seed);
-      edit({ nodes: autoPlaceKeys(state.rooms, state.nodes, seed), seed });
-      flash(`Placed ${state.nodes.filter(isKey).length} keys along the gate order · seed ${seed}`);
-    },
-    playtest,
-    continueRun: () => startPlay(true),
-    leavePlay,
-    restart,
-    undo: () => step('undo'),
-    redo: () => step('redo'),
-    saveFile,
-    openFile,
-    exportGame,
-    newProject: () => replaceContent(blankContent(), 'Started a new project. Undo to get the old one back'),
-    loadSample: (id) => {
-      const s = SAMPLES.find((x) => x.id === id) ?? SAMPLES[0];
-      replaceContent(s.content(), `Loaded ${s.name}`);
-    },
-    replaceRooms(rooms, msg) {
-      edit((s) => ({
-        rooms,
-        nodes: s.nodes.map((n) => (n.room && !rooms.some((r) => r.id === n.room) ? { ...n, room: null, pos: undefined } : n)),
-        doors: {},
-        selRoom: null,
-        editRoom: null,
-        grid: {
-          w: Math.max(s.grid.w, ...rooms.map((r) => r.x + r.w)),
-          h: Math.max(s.grid.h, ...rooms.map((r) => r.y + r.h)),
-        },
-      }));
-      flash(msg);
-    },
-    openIssue(issue) {
-      set((s) => ({ mode: 'author', editRoom: null, selRoom: issue.room ?? s.selRoom, selNode: issue.node ?? s.selNode }));
-    },
-  };
+    [edit, flash],
+  );
+
+  // The API object only changes when something it exposes does, so panels that read the
+  // context re-render on real changes rather than on every render of the editor.
+  const api = useMemo<EditorApi>(
+    () => ({
+      state,
+      analysis,
+      check,
+      byId,
+      roomById,
+      world,
+      stepOf: check.stepOf,
+      palette: presetById(state.style),
+      hatchUnreachable,
+      canvasRef,
+      colorOf: (n) => colorOf(n, byId),
+      set,
+      edit,
+      flash,
+      place(nodeId, roomId) {
+        const n = byId[nodeId];
+        const r = roomById[roomId];
+        if (!n || !r) return;
+        edit((s) => ({ nodes: s.nodes.map((x) => (x.id === nodeId ? { ...x, room: roomId, pos: x.room === roomId ? x.pos : undefined } : x)), selNode: nodeId }));
+        flash(`Placed ${n.label} in ${r.name}`);
+      },
+      unplace(nodeId) {
+        edit((s) => ({ nodes: s.nodes.map((x) => (x.id === nodeId ? { ...x, room: null, pos: undefined } : x)) }));
+      },
+      deleteRoom: (roomId) => deleteRooms([roomId]),
+      deleteRooms,
+      autoPlace() {
+        const S = stateRef.current;
+        const seed = nextSeed(S.seed);
+        edit({ nodes: autoPlaceKeys(S.rooms, S.nodes, seed), seed });
+        flash(`Placed ${S.nodes.filter(isKey).length} keys along the gate order · seed ${seed}`);
+      },
+      playtest,
+      playFrom,
+      continueRun: () => {
+        lastFrom.current = null;
+        startPlay(true);
+      },
+      leavePlay,
+      restart,
+      undo: () => step('undo'),
+      redo: () => step('redo'),
+      saveFile,
+      openFile,
+      exportGame,
+      newProject: () => switchProject(blankContent(), 'Started a new project. Your previous one is under Project → Recent'),
+      loadSample: (id) => {
+        const x = SAMPLES.find((v) => v.id === id) ?? SAMPLES[0];
+        switchProject(x.content(), `Opened ${x.name} as a new project`);
+      },
+      async openRecent(id) {
+        const c = await loadProject(id);
+        if (!c) return flash("Couldn't read that project");
+        switchProject(c, `Opened ${c.name}`, id);
+      },
+      async deleteRecent(id) {
+        if (id === stateRef.current.projectId) return flash("Can't delete the project that's open");
+        await deleteProject(id);
+        flash('Deleted the project from this browser');
+      },
+      replaceRooms(rooms, msg) {
+        edit((s) => ({
+          rooms,
+          nodes: s.nodes.map((n) => (n.room && !rooms.some((r) => r.id === n.room) ? { ...n, room: null, pos: undefined } : n)),
+          doors: {},
+          selRoom: null,
+          selRooms: [],
+          editRoom: null,
+          grid: {
+            w: Math.max(s.grid.w, ...rooms.map((r) => r.x + r.w)),
+            h: Math.max(s.grid.h, ...rooms.map((r) => r.y + r.h)),
+          },
+        }));
+        flash(msg);
+      },
+      openIssue(issue) {
+        set((s) => ({
+          mode: 'author',
+          editRoom: issue.tile && issue.room ? issue.room : null,
+          selRoom: issue.room ?? s.selRoom,
+          selRooms: issue.room ? [issue.room] : s.selRooms,
+          selNode: issue.node ?? s.selNode,
+        }));
+      },
+    }),
+    [state, analysis, check, byId, roomById, world, hatchUnreachable, set, edit, flash, deleteRooms, playtest, playFrom, startPlay, leavePlay, restart, step, saveFile, openFile, exportGame, switchProject],
+  );
 
   const author = state.mode === 'author';
+  const painting = author && !!state.editRoom && !!roomById[state.editRoom];
   return (
     <EditorContext.Provider value={api}>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg, overflow: 'hidden' }}>
         <TopBar />
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          {author ? <AuthorSidebar /> : <PlaytestSidebar />}
+          {!state.prefs.hideLeft && (author ? painting ? <PainterSidebar /> : <AuthorSidebar /> : <PlaytestSidebar />)}
           <main
             style={{
               flex: 1,
@@ -487,13 +561,14 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
               overflow: 'hidden',
             }}
           >
-            {!author ? <PlaytestView /> : state.editRoom && roomById[state.editRoom] ? <RoomPainter /> : <MapBoard />}
+            {!author ? <PlaytestView /> : painting ? <RoomPainter /> : <MapBoard />}
             {state.toast && <Toast message={state.toast} />}
           </main>
-          {author ? <InspectorPanel /> : <PlaytestPanel />}
+          {!state.prefs.hideRight && (author ? <InspectorPanel /> : <PlaytestPanel />)}
         </div>
         <StatusBar />
         {state.gen && <GenerateDialog />}
+        {state.importing && <ImportDialog />}
       </div>
     </EditorContext.Provider>
   );

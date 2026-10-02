@@ -2,6 +2,7 @@ import { parseReq, ReqError } from '../../model/abilities';
 import { ENTITY_SPECS } from '../../model/entities';
 import type { Entity } from '../../model/types';
 import { useEditor } from '../context';
+import { FlagField, ReqField } from './Pickers';
 import { C, dangerButton, MONO, SANS, sectionLabel, textInput } from '../ui';
 
 const field = { display: 'flex', flexDirection: 'column', gap: 4, font: `400 11.5px ${SANS}`, color: C.muted } as const;
@@ -36,17 +37,9 @@ export function EntityInspector({
       role="dialog"
       aria-label={`${spec.label} settings`}
       style={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        width: 250,
-        maxHeight: 'calc(100% - 20px)',
-        overflow: 'auto',
+        padding: '14px 16px',
+        borderBottom: `1px solid ${C.line}`,
         background: C.panelDeep,
-        border: `1px solid ${C.lineStrong}`,
-        borderRadius: 8,
-        boxShadow: '0 12px 32px rgba(0,0,0,.45)',
-        padding: 12,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
@@ -67,6 +60,7 @@ export function EntityInspector({
         const v = e.props[p.key] ?? p.default;
         const isReq = p.key === 'weak' || p.key === 'when';
         const err = isReq && typeof v === 'string' ? reqError(v) : null;
+        if (p.key === 'flag' && e.type === 'trigger' && e.props.action !== 'flag') return null;
         return (
           <label key={p.key} style={field}>
             <span>{p.label}</span>
@@ -91,12 +85,16 @@ export function EntityInspector({
                   </option>
                 ))}
               </select>
+            ) : p.key === 'flag' ? (
+              <FlagField label={p.label} value={String(v)} onChange={(x) => setProp(p.key, x)} setsFlag={e.type === 'boss' || (e.type === 'trigger' && e.props.action === 'flag')} />
+            ) : isReq ? (
+              <ReqField label={p.label} value={String(v)} onChange={(x) => setProp(p.key, x)} />
             ) : p.key === 'message' ? (
               <textarea value={String(v)} rows={3} onChange={(x) => setProp(p.key, x.target.value)} style={{ ...textInput, height: 'auto', padding: 8, resize: 'vertical', font: `400 12.5px/1.45 ${SANS}` }} />
             ) : (
-              <input value={String(v)} onChange={(x) => setProp(p.key, x.target.value)} style={{ ...textInput, fontFamily: isReq ? MONO : undefined, borderColor: err ? C.bad : undefined }} />
+              <input value={String(v)} onChange={(x) => setProp(p.key, x.target.value)} style={textInput} />
             )}
-            {err ? <span style={{ color: C.badSoft }}>{err}</span> : p.hint && <span style={{ color: C.dim }}>{p.hint}</span>}
+            {!err && p.hint && <span style={{ color: C.dim }}>{p.hint}</span>}
           </label>
         );
       })}

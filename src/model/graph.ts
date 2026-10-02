@@ -80,6 +80,8 @@ export interface Issue {
   msg: string;
   room?: string;
   node?: string;
+  /** Tile inside `room` the issue is about, when there is one. */
+  tile?: { x: number; y: number };
 }
 
 export interface Analysis {

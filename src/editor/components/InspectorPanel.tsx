@@ -6,6 +6,8 @@ import { LockKeyTab } from './LockKeyTab';
 import { RulesTab } from './RulesTab';
 import { SpritesTab } from './SpritesTab';
 import { ValidateTab } from './ValidateTab';
+import { EntityInspector } from './EntityInspector';
+import type { Entity } from '../../model/types';
 
 const TABS: [Tab, string][] = [
   ['graph', 'Keys'],
@@ -17,8 +19,12 @@ const TABS: [Tab, string][] = [
 
 /** Right panel while authoring. */
 export function InspectorPanel() {
-  const { state, check, set } = useEditor();
+  const { state, check, set, edit, roomById } = useEditor();
   const count = check.issues.length;
+  const room = state.editRoom ? roomById[state.editRoom] : undefined;
+  const entity = room?.entities?.find((e) => e.id === state.selEntity);
+  const setEntities = (fn: (l: Entity[]) => Entity[], merge?: string) =>
+    edit((s) => ({ rooms: s.rooms.map((r) => (r.id === room?.id ? { ...r, entities: fn(r.entities ?? []) } : r)) }), merge);
   return (
     <aside
       style={{
@@ -31,6 +37,19 @@ export function InspectorPanel() {
         minHeight: 0,
       }}
     >
+      {room && entity && (
+        <div style={{ flex: 'none', maxHeight: '60%', overflow: 'auto' }}>
+          <EntityInspector
+            entity={entity}
+            onChange={(e, merge) => setEntities((l) => l.map((x) => (x.id === e.id ? e : x)), merge)}
+            onDelete={() => {
+              setEntities((l) => l.filter((x) => x.id !== entity.id));
+              set({ selEntity: null });
+            }}
+            onClose={() => set({ selEntity: null })}
+          />
+        </div>
+      )}
       <div
         role="tablist"
         style={{
