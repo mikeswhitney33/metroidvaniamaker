@@ -1,38 +1,18 @@
 import { useEditor } from '../context';
-import { C, MONO, SANS, plural, primaryButton, secondaryButton } from '../ui';
+import { C, plural, primaryButton, SANS, secondaryButton } from '../ui';
 
-/** Modal shown by "Generate build": either the validation block, or build progress. */
+/** Shown when Playtest is pressed while validation has blocking issues. */
 export function GenerateDialog() {
-  const { state, palette, set } = useEditor();
+  const { state, check, set, playtest } = useEditor();
   const gen = state.gen;
   if (!gen) return null;
-
-  const steps = [
-    `Trace corridors into ${plural(state.rooms.length, 'region')}`,
-    'Solve lock & key graph',
-    'Place keys and gates',
-    'Build tile geometry',
-    `Paint with ${palette.name}`,
-    'Bake playable build',
-  ];
-  const pct = gen.blocked ? 0 : gen.pct;
-  const cur = Math.min(steps.length - 1, Math.floor(pct / (100 / steps.length)));
-
+  const errors = check.issues.filter((i) => i.sev === 'error').slice(0, 4);
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(8,9,11,.72)',
-        display: 'grid',
-        placeItems: 'center',
-        zIndex: 10,
-      }}
-    >
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(8,9,11,.72)', display: 'grid', placeItems: 'center', zIndex: 10 }}>
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={gen.blocked ? "Can't generate yet" : 'Generating build'}
+        aria-label="Blocking issues"
         style={{
           width: 460,
           maxWidth: 'calc(100vw - 32px)',
@@ -46,58 +26,25 @@ export function GenerateDialog() {
           gap: 14,
         }}
       >
-        {gen.blocked ? (
-          <>
-            <div style={{ font: `600 15px ${SANS}`, color: C.badSoft }}>Can't generate yet</div>
-            <div style={{ font: `400 13px/1.5 ${SANS}`, color: C.textSoft }}>
-              Validation found {plural(gen.errors, 'blocking issue')}. A generated build would softlock the player.
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => set({ gen: null })} style={{ ...secondaryButton, height: 30, padding: '0 12px' }}>
-                Close
-              </button>
-              <button onClick={() => set({ gen: null, mode: 'author', tab: 'validate' })} style={primaryButton}>
-                Review issues
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <div style={{ font: `600 15px ${SANS}`, color: C.text }}>Generating build</div>
-              <div style={{ font: `400 11px ${MONO}`, color: C.muted }}>seed {state.seed}</div>
-            </div>
-            <div
-              role="progressbar"
-              aria-valuenow={Math.round(pct)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              style={{ height: 4, borderRadius: 2, background: C.line, overflow: 'hidden' }}
-            >
-              <div style={{ height: '100%', width: `${pct}%`, background: C.accent, transition: 'width .07s linear' }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {steps.map((label, i) => {
-                const done = i < cur || pct >= 100;
-                const active = !done && i === cur;
-                return (
-                  <div
-                    key={label}
-                    style={{
-                      display: 'flex',
-                      gap: 8,
-                      font: `400 12.5px ${SANS}`,
-                      color: done ? C.ok : active ? C.text : C.dim,
-                    }}
-                  >
-                    <span style={{ width: 14, font: `500 11px ${MONO}` }}>{done ? '✓' : active ? '›' : '·'}</span>
-                    <span>{label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </>
+        <div style={{ font: `600 15px ${SANS}`, color: C.badSoft }}>This map can't be finished yet</div>
+        <div style={{ font: `400 13px/1.5 ${SANS}`, color: C.textSoft }}>
+          Validation found {plural(gen.errors, 'blocking issue')}. You can still play to try things out.
+        </div>
+        {errors.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, font: `400 12.5px/1.5 ${SANS}`, color: C.text }}>
+            {errors.map((e) => (
+              <li key={e.msg}>{e.msg}</li>
+            ))}
+          </ul>
         )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={() => playtest(true)} style={{ ...secondaryButton, height: 30, padding: '0 12px' }}>
+            Play anyway
+          </button>
+          <button onClick={() => set({ gen: null, mode: 'author', tab: 'validate' })} style={primaryButton}>
+            Review issues
+          </button>
+        </div>
       </div>
     </div>
   );
