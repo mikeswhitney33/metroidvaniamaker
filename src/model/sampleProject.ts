@@ -25,7 +25,7 @@ export const SAMPLE_ROOMS: Room[] = [
 
 export const SAMPLE_NODES: GraphNode[] = [
   { id: 'start', kind: 'start', label: 'Start', room: 'A', req: [] },
-  { id: 'dash', kind: 'key', label: 'Dash Boots', color: '#5ec4e8', room: 'E', req: ['start'] },
+  { id: 'dash', kind: 'key', label: 'Dash Boots', color: '#5ec4e8', room: 'E', req: ['start'], ability: 'dash' },
   { id: 'gDash', kind: 'gate', label: 'Collapsed Wall', room: 'F', req: ['dash'] },
   { id: 'grapple', kind: 'key', label: 'Grapple Hook', color: '#b48cff', room: 'G', req: ['gDash'] },
   { id: 'gGrapple', kind: 'gate', label: 'Hook Anchors', room: 'H', req: ['grapple'] },
@@ -33,7 +33,7 @@ export const SAMPLE_NODES: GraphNode[] = [
   { id: 'gFlood', kind: 'gate', label: 'Flooded Drain', room: 'N', req: ['dive'] },
   { id: 'red', kind: 'key', label: 'Red Sigil', color: '#ff6b6b', room: 'O', req: ['gFlood'] },
   { id: 'gRed', kind: 'gate', label: 'Red Door', room: 'J', req: ['red'] },
-  { id: 'djump', kind: 'key', label: 'Double Jump', color: '#f0b44c', room: 'K', req: ['gRed'] },
+  { id: 'djump', kind: 'key', label: 'Double Jump', color: '#f0b44c', room: 'K', req: ['gRed'], ability: 'djump' },
   { id: 'gUp', kind: 'gate', label: 'Updraft Gap', room: 'L', req: ['djump', 'grapple'] },
   { id: 'boss', kind: 'boss', label: 'The Warden', room: 'M', req: ['gUp'] },
 ];
@@ -46,6 +46,11 @@ export const PRESETS: StylePreset[] = [
   { id: 'neon', name: 'Neon Ruin', bg: '#0a0e19', bg2: '#121b33', wall: '#1d2a4c', edge: '#3ee6d0', player: '#ff4fa3' },
   { id: 'verdant', name: 'Verdant Deep', bg: '#0e1812', bg2: '#16281c', wall: '#2e4a35', edge: '#9fd37f', player: '#f2e3a0' },
   { id: 'ink', name: '1-bit Ink', bg: '#0d0d0d', bg2: '#181818', wall: '#d9d4c7', edge: '#ffffff', player: '#ff5a3c' },
+  { id: 'ember', name: 'Ember Forge', bg: '#1a0d0a', bg2: '#2a140e', wall: '#5a2e22', edge: '#ff9a5c', player: '#f0e6d2' },
+  { id: 'mire', name: 'Mire', bg: '#0f140c', bg2: '#1a2214', wall: '#3d4a2a', edge: '#b8c96a', player: '#f0e6d2' },
+  { id: 'dusk', name: 'Dusk Wastes', bg: '#171425', bg2: '#251f3a', wall: '#4d4366', edge: '#e8a87c', player: '#f0e6d2' },
+  { id: 'ruins', name: 'Sunken Ruins', bg: '#10141a', bg2: '#1a222c', wall: '#56606e', edge: '#d9c27a', player: '#f0e6d2' },
+  { id: 'core', name: 'Heartcore', bg: '#0c0a12', bg2: '#1c1028', wall: '#3a2a4e', edge: '#e05cff', player: '#f0e6d2' },
 ];
 
 export const presetById = (id: string): StylePreset => PRESETS.find((p) => p.id === id) ?? PRESETS[0];

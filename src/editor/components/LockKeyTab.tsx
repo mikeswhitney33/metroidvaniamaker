@@ -1,3 +1,4 @@
+import { allAbilities, abilityById } from '../../model/abilities';
 import { depths, isKey } from '../../model/graph';
 import { EXTRA_KEY_COLORS } from '../../model/sampleProject';
 import type { GraphNode } from '../../model/types';
@@ -207,7 +208,7 @@ function NodeInspector() {
           value={sn.label}
           onChange={(e) => {
             const label = e.target.value;
-            edit((s) => ({ nodes: s.nodes.map((x) => (x.id === sn.id ? { ...x, label } : x)) }));
+            edit((s) => ({ nodes: s.nodes.map((x) => (x.id === sn.id ? { ...x, label } : x)) }), `label:${sn.id}`);
           }}
           style={{ ...textInput, flex: 1, minWidth: 0 }}
         />
@@ -236,6 +237,7 @@ function NodeInspector() {
           {room ? room.name : 'Unplaced: drag onto map'}
         </span>
       </div>
+      {sn.kind === 'key' && <AbilityPicker />}
       <div style={{ font: `400 12px ${SANS}`, color: C.muted }}>{reqTitle}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
         {candidates.map((o) => {
@@ -277,6 +279,55 @@ function NodeInspector() {
           Delete node
         </button>
       </div>
+    </div>
+  );
+}
+
+/** What picking up a key does: the ability it grants (its key role), and whether it starts dormant. */
+function AbilityPicker() {
+  const { state, byId, edit } = useEditor();
+  const sn = state.selNode ? byId[state.selNode] : undefined;
+  if (!sn) return null;
+  const list = allAbilities(state.abilities);
+  const a = abilityById(sn.ability, state.abilities);
+  const setNode = (patch: Partial<GraphNode>, merge?: string) =>
+    edit((s) => ({ nodes: s.nodes.map((x) => (x.id === sn.id ? { ...x, ...patch } : x)) }), merge);
+  const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, font: `400 12px ${SANS}`, color: C.muted } as const;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <label style={row}>
+        <span>Grants</span>
+        <select
+          value={sn.ability ?? ''}
+          onChange={(e) => {
+            const next = abilityById(e.target.value, state.abilities);
+            const renamed = !sn.label || sn.label === 'New Key' || sn.label === a?.name;
+            setNode({ ability: e.target.value || undefined, ...(next && renamed ? { label: next.name, color: next.color } : {}) });
+          }}
+          style={{ ...textInput, height: 28, width: 190 }}
+        >
+          <option value="">Nothing (a plain key)</option>
+          {list.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {a && (
+        <div style={{ font: `400 11.5px/1.45 ${SANS}`, color: C.dim }}>
+          {a.desc} Opens anything needing <span style={{ fontFamily: MONO, color: C.textSoft }}>{a.caps.join(', ')}</span>.
+        </div>
+      )}
+      <label style={row}>
+        <span title="Collected, but it does nothing until this world flag is set (by a boss or trigger)">Dormant until flag</span>
+        <input
+          value={sn.dormantUntil ?? ''}
+          placeholder="none"
+          onChange={(e) => setNode({ dormantUntil: e.target.value || undefined }, `dormant:${sn.id}`)}
+          style={{ ...textInput, height: 28, width: 120, fontFamily: MONO, fontSize: 12 }}
+        />
+      </label>
     </div>
   );
 }

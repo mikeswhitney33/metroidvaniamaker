@@ -39,3 +39,14 @@ button {
 .vw-remove:hover {
   color: #ff6b6b !important;
 }
+.vw-menu-item:hover,
+.vw-menu-item:focus-visible {
+  background: #262b33 !important;
+}
+.vw-name:hover {
+  border-color: #2b3038 !important;
+}
+.vw-name:focus {
+  border-color: #343a44 !important;
+  background: #111317 !important;
+}

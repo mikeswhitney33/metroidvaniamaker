@@ -4,8 +4,8 @@ import { statusSummary } from '../status';
 import { C, MONO } from '../ui';
 
 export function StatusBar() {
-  const { state, analysis, palette } = useEditor();
-  const status = statusSummary(analysis);
+  const { state, check, palette } = useEditor();
+  const status = statusSummary(check);
   const keys = state.nodes.filter(isKey).length;
   const gates = state.nodes.filter((n) => n.kind === 'gate').length;
   return (

@@ -1,11 +1,17 @@
-import { SAMPLE_NODES, SAMPLE_ROOMS } from '../model/sampleProject';
-import type { GraphNode, Room } from '../model/types';
+import { sampleContent, type ProjectContent } from '../model/project';
+import { Tile, type TileKind } from '../model/tiles';
+import type { TileSize } from '../model/types';
+import { emptyHistory, type History } from './history';
+import { loadPrefs, type Prefs } from './prefs';
+
+export type { TileSize };
 
 export type Mode = 'author' | 'play';
 export type Tool = 'select' | 'draw' | 'erase';
-export type Tab = 'graph' | 'style' | 'validate';
+export type Tab = 'graph' | 'rules' | 'style' | 'sprites' | 'validate';
+/** What the room painter places: tiles, or entities and item positions. */
+export type PaintLayer = 'tiles' | 'entities';
 export type Source = 'image' | 'tiled' | 'draw';
-export type TileSize = '8px' | '16px' | '32px';
 
 export interface Draft {
   x0: number;
@@ -14,68 +20,80 @@ export interface Draft {
   y1: number;
 }
 
-/** Generate dialog: either blocked by validation errors, or running with a progress percentage. */
-export type GenState = { blocked: true; errors: number } | { blocked: false; pct: number };
+/** Shown when Playtest is pressed on a map with blocking issues. */
+export type GenState = { blocked: true; errors: number };
 
 export interface LogEntry {
   t: string;
   msg: string;
 }
 
-export interface EditorState {
+/** Autosave state shown in the top bar; 'loading' until the last autosave has been read back. */
+export type SaveStatus = 'loading' | 'saved' | 'saving' | 'error';
+
+export interface EditorState extends ProjectContent {
   mode: Mode;
   tool: Tool;
   tab: Tab;
   source: Source;
-  rooms: Room[];
-  nodes: GraphNode[];
   selRoom: string | null;
   selNode: string | null;
-  style: string;
-  tile: TileSize;
-  prompt: string;
-  threshold: number;
   showItems: boolean;
   showRoute: boolean;
   draft: Draft | null;
-  seed: number;
+  /** Room open in the tile painter, or null for the map. */
+  editRoom: string | null;
+  paintTile: TileKind;
+  paintLayer: PaintLayer;
+  /** Entity type the painter places, or a node id to position (`node:<id>`). */
+  placing: string;
+  selEntity: string | null;
+  /** Map zoom: pixels per cell. */
+  zoom: number;
+  /** Show where the solver says the player can reach. */
+  showReach: boolean;
   gen: GenState | null;
-  /** Bumped on every content edit, so an unchanged map can skip regeneration. */
+  /** Bumped on every content edit. */
   rev: number;
-  builtRev: number;
   playRoom: string;
   visited: string[];
   have: string[];
   log: LogEntry[];
   toast: string | null;
-  /** Counter for naming newly drawn rooms. */
-  seq: number;
+  history: History;
+  saveStatus: SaveStatus;
+  prefs: Prefs;
+  /** A saved run exists for this project, so Playtest can continue it. */
+  hasRun: boolean;
 }
 
 export const initialState: EditorState = {
+  ...sampleContent(),
   mode: 'author',
   tool: 'select',
   tab: 'graph',
   source: 'image',
-  rooms: SAMPLE_ROOMS,
-  nodes: SAMPLE_NODES,
   selRoom: null,
   selNode: 'grapple',
-  style: 'ashen',
-  tile: '16px',
-  prompt: 'Crumbling cathedral carved into a dead volcano. Drifting ash, candlelit alcoves, rusted ironwork.',
-  threshold: 55,
   showItems: true,
   showRoute: true,
   draft: null,
-  seed: 4821,
+  editRoom: null,
+  paintTile: Tile.Solid,
+  paintLayer: 'tiles',
+  placing: 'enemy',
+  selEntity: null,
+  zoom: 24,
+  showReach: false,
   gen: null,
   rev: 0,
-  builtRev: -1,
   playRoom: 'A',
   visited: ['A'],
   have: [],
   log: [],
   toast: null,
-  seq: 16,
+  history: emptyHistory,
+  saveStatus: 'loading',
+  prefs: loadPrefs(),
+  hasRun: false,
 };

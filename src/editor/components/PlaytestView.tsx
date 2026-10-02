@@ -3,7 +3,7 @@ import { C, MONO, SANS, secondaryButton } from '../ui';
 
 /** Centre of the playtest view: header and game canvas. */
 export function PlaytestView() {
-  const { state, roomById, palette, canvasRef, restart, set } = useEditor();
+  const { state, roomById, palette, canvasRef, restart, leavePlay } = useEditor();
   return (
     <>
       <div
@@ -20,13 +20,13 @@ export function PlaytestView() {
       >
         <div style={{ font: `600 13px ${SANS}`, color: C.text }}>{roomById[state.playRoom]?.name ?? ''}</div>
         <div style={{ font: `400 11px ${MONO}`, color: C.muted }}>
-          build {state.seed} · {palette.name}
+          {palette.name} · Esc returns to the editor
         </div>
         <div style={{ flex: 1 }} />
         <button onClick={restart} style={secondaryButton}>
           Restart
         </button>
-        <button onClick={() => set({ mode: 'author' })} style={secondaryButton}>
+        <button onClick={leavePlay} style={secondaryButton}>
           Back to editor
         </button>
       </div>
