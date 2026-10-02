@@ -43,7 +43,7 @@ export interface GameOptions {
   reducedFlash?: boolean;
   /** Where to come back after dying when there's no save: a "play from here" start. */
   retry?: RunData;
-  /** Images by slot id, for sprite sheets. */
+  /** Images by slot id: sprite sheets, tilesets and backdrops. */
   images?: Record<string, HTMLImageElement>;
   sound?: Sound | null;
 }
@@ -121,6 +121,8 @@ export class Game {
   shake = 0;
   time = 0;
   readonly animators: Record<string, Animator> = {};
+  /** Loaded project images by slot id: sprite sheets, tilesets and backdrops. */
+  readonly images: Record<string, HTMLImageElement>;
   readonly palette: StylePreset;
   private have: ReturnType<typeof runHave>;
   private readonly opts: GameOptions;
@@ -132,6 +134,7 @@ export class Game {
     this.events = events;
     this.opts = opts;
     this.palette = presetById(content.style);
+    this.images = opts.images ?? {};
     const byNode = indexNodes(content.nodes);
     this.level = new Level(content.rooms, content.doors, content.nodes, byNode, () => new Set(this.run?.keys ?? []));
     const st = content.nodes.find((n) => n.kind === 'start');

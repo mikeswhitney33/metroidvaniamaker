@@ -96,6 +96,27 @@ export function TopBar() {
       </div>
       <div style={{ flex: 1 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {(['hideLeft', 'hideRight'] as const).map((k) => {
+          const shown = !state.prefs[k];
+          const label = `${shown ? 'Hide' : 'Show'} ${k === 'hideLeft' ? 'left' : 'right'} panel`;
+          return (
+            <button
+              key={k}
+              aria-label={label}
+              title={label}
+              aria-pressed={shown}
+              onClick={() => set((s) => ({ prefs: { ...s.prefs, [k]: !s.prefs[k] } }))}
+              style={{ ...iconButton(true), color: shown ? C.text : C.faint }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                {k === 'hideLeft' ? <path d="M9 4v16" /> : <path d="M15 4v16" />}
+                {shown && (k === 'hideLeft' ? <rect x="3" y="4" width="6" height="16" fill="currentColor" stroke="none" opacity=".35" /> : <rect x="15" y="4" width="6" height="16" fill="currentColor" stroke="none" opacity=".35" />)}
+              </svg>
+            </button>
+          );
+        })}
+        <span style={{ width: 6 }} />
         <button aria-label="Undo" title="Undo" disabled={!canUndo} onClick={undo} style={iconButton(canUndo)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M9 14L4 9l5-5" />

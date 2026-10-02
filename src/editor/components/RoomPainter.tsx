@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { drawTiles } from '../../game/render';
+import { drawTileset, tilesetOf } from '../../game/tileset';
+import { presetById } from '../../model/sampleProject';
+import { useImage } from '../useImage';
 import { doorInfo, ENTITY_SPECS, newEntity } from '../../model/entities';
 import { isKey } from '../../model/graph';
 import { TEMPLATES } from '../../model/templates';
@@ -113,6 +116,10 @@ export function RoomPainter() {
   const entities = room.entities ?? [];
   const nodesHere = useMemo(() => state.nodes.filter((n) => n.room === room.id && (n.kind === 'start' || isKey(n))), [state.nodes, room.id]);
   const roomNames = useMemo(() => Object.fromEntries(state.rooms.map((r) => [r.id, r.name])), [state.rooms]);
+  const roomArea = state.areas.find((a) => a.id === room.area) ?? state.areas[0];
+  const areaPalette = roomArea?.style ? presetById(roomArea.style) : palette;
+  const tilesetImg = useImage(roomArea?.tileset ? state.images[roomArea.tileset] : undefined);
+  const tileset = tilesetImg ? tilesetOf(tilesetImg, parseInt(state.tile, 10) || 16) : null;
   const pins = useMemo(() => check.issues.filter((i) => i.room === room.id && i.tile), [check.issues, room.id]);
 
   const view = useRef<HTMLDivElement>(null);
@@ -185,9 +192,10 @@ export function RoomPainter() {
     c.width = tw * s * dpr;
     c.height = th * s * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = palette.bg;
+    ctx.fillStyle = areaPalette.bg;
     ctx.fillRect(0, 0, tw * s, th * s);
-    drawTiles(ctx, wr.g, tw, palette, s, 0, 0);
+    if (tileset) drawTileset(ctx, (x, y) => (x < 0 || y < 0 || x >= tw || y >= th ? Tile.Solid : wr.g[y * tw + x]), tw, th, tileset, areaPalette, s, 0, 0);
+    else drawTiles(ctx, wr.g, tw, areaPalette, s, 0, 0);
 
     // Doorways are carved where rooms touch, whatever is painted there: stripe them.
     ctx.fillStyle = 'rgba(240,180,76,.35)';
@@ -227,7 +235,7 @@ export function RoomPainter() {
     // Start and key items.
     nodesHere.forEach((n) => {
       const p = nodePos(n);
-      if (n.kind === 'start') drawStartArt(ctx, p.x, p.y, s, palette);
+      if (n.kind === 'start') drawStartArt(ctx, p.x, p.y, s, areaPalette);
       else {
         const x = (p.x + 0.5) * s;
         const y = (p.y + 0.5) * s;
@@ -264,7 +272,7 @@ export function RoomPainter() {
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     });
-  }, [wr, base, tw, th, s, palette, entities, nodesHere, colorOf, layer, state.selEntity, state.placing, roomNames, pins]);
+  }, [wr, base, tw, th, s, areaPalette, tileset, entities, nodesHere, colorOf, layer, state.selEntity, state.placing, roomNames, pins]);
 
   const brushCells = (c: Cell): Cell[] => {
     const n = state.brush;

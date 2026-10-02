@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { flagTable, type FlagUse } from '../../model/flags';
 import { useEditor } from '../context';
 import { C, MONO, SANS, sectionLabel, plural, toggle } from '../ui';
 
@@ -108,6 +110,40 @@ export function ValidateTab() {
             ))}
         </div>
       )}
+      <FlagList />
+    </div>
+  );
+}
+
+/** Every world flag: what sets it and what checks it. */
+function FlagList() {
+  const { state, set } = useEditor();
+  const { rooms, doors, nodes } = state;
+  const flags = useMemo(() => flagTable({ rooms, doors, nodes }), [rooms, doors, nodes]);
+  if (!flags.length) return null;
+  const roomName = (id?: string) => (id ? (rooms.find((r) => r.id === id)?.name ?? id) : '');
+  const use = (u: FlagUse, i: number) => (
+    <button
+      key={i}
+      onClick={() => u.room && set({ selRoom: u.room, selRooms: [u.room] })}
+      style={{ border: 0, background: 'none', padding: 0, color: C.textSoft, font: `400 11.5px/1.5 ${SANS}`, cursor: u.room ? 'pointer' : 'default', textAlign: 'left' }}
+    >
+      {u.what}
+      {u.room && <span style={{ color: C.dim }}> · {roomName(u.room)}</span>}
+    </button>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={sectionLabel}>Flags</div>
+      {flags.map((f) => (
+        <div key={f.name} style={{ padding: '8px 10px', borderRadius: 5, border: `1px solid ${!f.setBy.length && f.readBy.length ? C.accent : C.line}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ font: `500 12px ${MONO}`, color: C.text }}>{f.name}</div>
+          <div style={{ font: `400 11px ${SANS}`, color: C.dim }}>Set by</div>
+          {f.setBy.length ? f.setBy.map(use) : <span style={{ font: `400 11.5px ${SANS}`, color: C.accent }}>Nothing sets it</span>}
+          <div style={{ font: `400 11px ${SANS}`, color: C.dim, marginTop: 2 }}>Checked by</div>
+          {f.readBy.length ? f.readBy.map(use) : <span style={{ font: `400 11.5px ${SANS}`, color: C.dim }}>Nothing checks it</span>}
+        </div>
+      ))}
     </div>
   );
 }

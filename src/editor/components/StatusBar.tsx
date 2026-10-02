@@ -7,7 +7,7 @@ export function StatusBar() {
   const { state, check, palette } = useEditor();
   const status = statusSummary(check);
   const keys = state.nodes.filter(isKey).length;
-  const gates = state.nodes.filter((n) => n.kind === 'gate').length;
+  const gates = state.nodes.filter((n) => n.kind === 'gate').length + Object.values(state.doors).filter((d) => d.kind !== 'open').length;
   return (
     <footer
       style={{
@@ -25,7 +25,7 @@ export function StatusBar() {
     >
       <span style={{ color: status.color }}>{status.text}</span>
       <span>
-        {state.rooms.length} rooms · {keys} keys · {gates} gates · seed {state.seed}
+        {state.rooms.length} rooms · {keys} items · {gates} gates and hatches · seed {state.seed}
       </span>
       <div style={{ flex: 1 }} />
       <span>

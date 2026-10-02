@@ -58,6 +58,10 @@ export interface Area {
   style?: string;
   /** Built-in music theme id. */
   music?: string;
+  /** Image slot id of the area's tileset (see game/tileset.ts for the layout). */
+  tileset?: string;
+  /** Image slot id of a backdrop drawn behind the area's rooms with parallax. */
+  backdrop?: string;
 }
 
 /** Hatch on a side doorway between two rooms; what opens it. */

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { gameImageIds } from '../model/images';
 import { Sound } from '../game/audio';
 import { Game, STEP } from '../game/Game';
 import { DEFAULT_BINDINGS, Input, keyLabel, type Bindings } from '../game/input';
@@ -29,10 +30,9 @@ export function Player({ project, bindings = DEFAULT_BINDINGS }: { project: unkn
     const sound = new Sound();
     sound.resume();
     const images: Record<string, HTMLImageElement> = {};
-    Object.values(content.sprites).forEach((sh) => {
-      const src = content.images[sh.image];
-      if (!src) return;
-      images[sh.image] = Object.assign(new Image(), { src });
+    gameImageIds(content).forEach((id) => {
+      const src = content.images[id];
+      if (src) images[id] = Object.assign(new Image(), { src });
     });
     game.current = new Game(content, {}, { saveKey: key, run: resume ? (loadRun(key) ?? undefined) : undefined, damageScale: opts.assist ? 0.5 : 1, reducedFlash: opts.calm, images, sound });
     setStarted(true);

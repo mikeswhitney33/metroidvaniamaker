@@ -492,6 +492,13 @@ export function MapBoard() {
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onPointerLeave={() => (hoverCell.current = null)}
+          onDoubleClick={(e) => {
+            // Pointer capture sends the double-click to the grid, so find the room here.
+            if (state.tool !== 'select' || (e.target as HTMLElement).closest('[data-hatch],[data-pin]')) return;
+            const c = cellAt(e.clientX, e.clientY);
+            const r = roomAt(c.x, c.y);
+            if (r) set({ selRoom: r.id, selRooms: [r.id], editRoom: r.id });
+          }}
           style={{
             position: 'relative',
             flex: 'none',
@@ -782,10 +789,6 @@ function RoomTile({
   return (
     <div
       title={r.name}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        if (state.tool === 'select') set({ selRoom: r.id, selRooms: [r.id], editRoom: r.id });
-      }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();

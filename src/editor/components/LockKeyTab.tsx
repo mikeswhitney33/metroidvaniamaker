@@ -2,8 +2,11 @@ import { allAbilities, abilityById } from '../../model/abilities';
 import { depths, isKey } from '../../model/graph';
 import { EXTRA_KEY_COLORS } from '../../model/sampleProject';
 import type { GraphNode } from '../../model/types';
+import { useState } from 'react';
 import { useEditor } from '../context';
-import { C, dangerButton, MONO, SANS, secondaryButton, swatch, textInput } from '../ui';
+import { KeyRoute } from './KeyRoute';
+import { FlagField } from './Pickers';
+import { C, dangerButton, MONO, SANS, secondaryButton, seg, segGroup, swatch, textInput } from '../ui';
 
 const GRAPH_W = 312;
 const ROW_H = 40;
@@ -39,6 +42,36 @@ function layout(nodes: GraphNode[]) {
 }
 
 export function LockKeyTab() {
+  const { state } = useEditor();
+  const hasGates = state.nodes.some((n) => n.kind === 'gate');
+  const [view, setView] = useState<'route' | 'graph'>(hasGates ? 'graph' : 'route');
+  return (
+    <>
+      <div style={{ ...segGroup, marginBottom: 12 }} role="radiogroup" aria-label="Keys view">
+        <button role="radio" aria-checked={view === 'route'} style={seg(view === 'route')} onClick={() => setView('route')}>
+          Route
+        </button>
+        <button role="radio" aria-checked={view === 'graph'} style={seg(view === 'graph')} onClick={() => setView('graph')}>
+          Gate graph
+        </button>
+      </div>
+      {view === 'route' ? (
+        <>
+          <div style={{ font: `400 11.5px/1.4 ${SANS}`, color: C.muted, marginBottom: 10 }}>
+            What the player collects at each stage, and the hatches and blocks it opens. Built from the rooms themselves.
+          </div>
+          <KeyRoute />
+          <NodeInspector />
+        </>
+      ) : (
+        <GateGraph />
+      )}
+    </>
+  );
+}
+
+/** Abstract lock & key graph: keys and the gate nodes they open. */
+function GateGraph() {
   const { state, roomById, colorOf, edit } = useEditor();
   const { pos, height } = layout(state.nodes);
 
@@ -77,7 +110,7 @@ export function LockKeyTab() {
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
         <div style={{ flex: 1, font: `400 11.5px/1.4 ${SANS}`, color: C.muted }}>
-          Keys left, gates right. Drag a node onto a room to place it.
+          Gate nodes seal a whole room until their keys are found. Keys left, gates right; drag a node onto a room to place it.
         </div>
         <button onClick={addKey} style={smallButton}>
           + Key
@@ -321,11 +354,11 @@ function AbilityPicker() {
       )}
       <label style={row}>
         <span title="Collected, but it does nothing until this world flag is set (by a boss or trigger)">Dormant until flag</span>
-        <input
+        <FlagField
+          label="Dormant until flag"
           value={sn.dormantUntil ?? ''}
-          placeholder="none"
-          onChange={(e) => setNode({ dormantUntil: e.target.value || undefined }, `dormant:${sn.id}`)}
-          style={{ ...textInput, height: 28, width: 120, fontFamily: MONO, fontSize: 12 }}
+          onChange={(v) => setNode({ dormantUntil: v || undefined }, `dormant:${sn.id}`)}
+          style={{ height: 28, width: 120, fontSize: 12 }}
         />
       </label>
     </div>

@@ -5,6 +5,7 @@ import { Input } from '../game/input';
 import { clearRun, loadRun, newRun, runHave, saveKey, type RunData } from '../game/run';
 import { flagIssues, flagTable } from '../model/flags';
 import { analyze, autoPlaceKeys, colorOf, indexNodes, isKey, nextSeed } from '../model/graph';
+import { gameImageIds } from '../model/images';
 import { loadoutFor } from '../model/loadout';
 import {
   blankContent,
@@ -65,15 +66,15 @@ function withContent(s: EditorState, c: ProjectContent): EditorState {
   };
 }
 
-/** Image elements for sprite sheet slots, so the game can draw them. */
-function sheetImages(c: ProjectContent): Record<string, HTMLImageElement> {
+/** Image elements for the slots the game draws (sprite sheets, tilesets, backdrops). */
+function gameImages(c: ProjectContent): Record<string, HTMLImageElement> {
   const out: Record<string, HTMLImageElement> = {};
-  Object.values(c.sprites).forEach((sh) => {
-    const src = c.images[sh.image];
-    if (!src || out[sh.image]) return;
+  gameImageIds(c).forEach((id) => {
+    const src = c.images[id];
+    if (!src) return;
     const img = new Image();
     img.src = src;
-    out[sh.image] = img;
+    out[id] = img;
   });
   return out;
 }
@@ -267,7 +268,7 @@ export function Editor({ hatchUnreachable = true }: EditorProps) {
             retry: from?.run,
             damageScale: S.prefs.assist ? 0.5 : 1,
             reducedFlash: S.prefs.reducedFlash,
-            images: sheetImages(c),
+            images: gameImages(c),
             sound: sound.current,
           },
         );
