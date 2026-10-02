@@ -1,20 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
 import { THEMES } from '../../game/audio';
 import { DOOR_KINDS } from '../../model/entities';
 import { PRESETS } from '../../model/sampleProject';
-import { imageToMask, ImportError, mapFileToMask, maskToRooms } from '../../model/trace';
 import type { Area, DoorKind } from '../../model/types';
 import { useEditor } from '../context';
-import { ImageSlot } from './ImageSlot';
+import { FlagField } from './Pickers';
 import { sideLinks } from './MapBoard';
-import type { Source } from '../state';
-import { C, dangerButton, MONO, SANS, sectionLabel, secondaryButton, seg, segGroup, swatch, textInput, toggle } from '../ui';
-
-const SOURCES: [Source, string][] = [
-  ['image', 'Image'],
-  ['tiled', 'Tiled / LDtk'],
-  ['draw', 'Draw'],
-];
+import { C, dangerButton, MONO, SANS, sectionLabel, secondaryButton, swatch, textInput, toggle } from '../ui';
 
 const sidebar = {
   width: 264,
@@ -26,134 +17,14 @@ const sidebar = {
   minHeight: 0,
 } as const;
 
-/** Reads an image data URL into pixels. */
-function pixels(src: string): Promise<{ data: Uint8ClampedArray; w: number; h: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const w = Math.min(img.naturalWidth, 2048);
-      const h = Math.round((img.naturalHeight * w) / img.naturalWidth);
-      const c = document.createElement('canvas');
-      c.width = w;
-      c.height = h;
-      const ctx = c.getContext('2d');
-      if (!ctx) return reject(new Error('no canvas'));
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve({ data: ctx.getImageData(0, 0, w, h).data, w, h });
-    };
-    img.onerror = () => reject(new Error("Couldn't read the image."));
-    img.src = src;
-  });
-}
-
 const smallInput = { ...textInput, height: 26, width: 54, font: `500 12px ${MONO}`, padding: '0 6px' };
 
-/** Left panel while authoring: map source, map settings, overlays, room list and room inspector. */
+/** Left panel on the map: map settings, areas, overlays, room list and room inspector. */
 export function AuthorSidebar() {
-  const { state, set, edit, flash, check, replaceRooms } = useEditor();
-  const fileInput = useRef<HTMLInputElement>(null);
-  const [img, setImg] = useState<{ w: number; h: number } | null>(null);
-  const src = state.images['map-source'];
-  useEffect(() => {
-    if (!src) return setImg(null);
-    pixels(src).then((p) => setImg({ w: p.w, h: p.h }), () => setImg(null));
-  }, [src]);
-
-  const retrace = async () => {
-    if (!src) return flash('Add a map image first');
-    try {
-      const p = await pixels(src);
-      const mask = imageToMask(p.data, p.w, p.h, state.grid.w, state.grid.h, state.threshold);
-      const { rooms, seq } = maskToRooms(mask, state.seq);
-      if (!rooms.length) return flash('Nothing traced. Try a higher threshold');
-      replaceRooms(rooms, `Traced ${rooms.length} rooms at threshold ${state.threshold}. Undo to go back`);
-      edit({ seq });
-    } catch (e) {
-      flash(e instanceof Error ? e.message : "Couldn't trace the image");
-    }
-  };
-
-  const importMap = async (f: File) => {
-    try {
-      const mask = mapFileToMask(await f.text());
-      const { rooms, seq } = maskToRooms(mask, state.seq);
-      replaceRooms(rooms, `Imported ${rooms.length} rooms from ${f.name}. Undo to go back`);
-      edit((s) => ({ seq, grid: { w: Math.max(s.grid.w, mask[0]?.length ?? 0), h: Math.max(s.grid.h, mask.length) } }));
-    } catch (e) {
-      flash(e instanceof ImportError ? e.message : `Couldn't read ${f.name}`);
-    }
-  };
-
+  const { state, set, edit, check } = useEditor();
   return (
     <aside style={sidebar}>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: 14, borderBottom: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={sectionLabel}>Raw map</div>
-          <div style={segGroup}>
-            {SOURCES.map(([id, label]) => (
-              <button
-                key={id}
-                style={seg(state.source === id)}
-                onClick={() => set((s) => ({ source: id, tool: id === 'draw' ? 'draw' : s.tool }))}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {state.source === 'image' && (
-            <>
-              <div style={{ height: 84 }}>
-                <ImageSlot id="map-source" placeholder="Map sketch" />
-              </div>
-              <div style={{ font: `400 11px ${MONO}`, color: C.muted }}>
-                {img ? `${img.w}×${img.h} → ${state.grid.w}×${state.grid.h} cells` : 'Drop a sketch: dark strokes on light, or light on dark'}
-              </div>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, font: `400 11.5px ${SANS}`, color: C.muted }}>
-                Trace threshold · {state.threshold}
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={state.threshold}
-                  onChange={(e) => edit({ threshold: +e.target.value }, 'threshold')}
-                  style={{ accentColor: C.accent, width: '100%' }}
-                />
-              </label>
-              <button className="vw-btn-secondary" style={{ ...secondaryButton, padding: 0 }} onClick={retrace} disabled={!src}>
-                Re-trace regions
-              </button>
-            </>
-          )}
-          {state.source === 'tiled' && (
-            <>
-              <button className="vw-btn-secondary" style={{ ...secondaryButton, padding: 0 }} onClick={() => fileInput.current?.click()}>
-                Import Tiled or LDtk map…
-              </button>
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".tmj,.json,.ldtk"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void importMap(f);
-                  e.target.value = '';
-                }}
-              />
-              <div style={{ font: `400 11.5px/1.45 ${SANS}`, color: C.muted }}>
-                Tiled maps saved as JSON (.tmj) use their first tile layer; LDtk projects use the first IntGrid layer. Each
-                non-empty tile becomes a room cell.
-              </div>
-            </>
-          )}
-          {state.source === 'draw' && (
-            <div style={{ font: `400 12px/1.5 ${SANS}`, color: C.muted }}>
-              Press <span style={{ fontFamily: MONO, color: C.text }}>B</span> and drag on the grid to add a room. Rooms
-              that share an edge get a doorway.
-            </div>
-          )}
-        </div>
-
         <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={sectionLabel}>Map</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: `400 12px ${SANS}`, color: C.muted }}>
@@ -277,8 +148,9 @@ function AreaList() {
             ×
           </button>
           <span />
-          <div style={{ display: 'flex', gap: 4 }}>
-            <select aria-label="Palette" value={a.style ?? ''} onChange={(e) => setArea(a.id, { style: e.target.value || undefined })} style={{ ...textInput, height: 24, flex: 1, minWidth: 0, font: `400 11px ${SANS}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 6px', alignItems: 'center', font: `400 11px ${SANS}`, color: C.dim }}>
+            Palette
+            <select aria-label="Palette" value={a.style ?? ''} onChange={(e) => setArea(a.id, { style: e.target.value || undefined })} style={{ ...textInput, height: 24, minWidth: 0, font: `400 11px ${SANS}` }}>
               <option value="">Project style</option>
               {PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -286,7 +158,8 @@ function AreaList() {
                 </option>
               ))}
             </select>
-            <select aria-label="Music" value={a.music ?? ''} onChange={(e) => setArea(a.id, { music: e.target.value || undefined })} style={{ ...textInput, height: 24, flex: 1, minWidth: 0, font: `400 11px ${SANS}` }}>
+            Music
+            <select aria-label="Music" value={a.music ?? ''} onChange={(e) => setArea(a.id, { music: e.target.value || undefined })} style={{ ...textInput, height: 24, minWidth: 0, font: `400 11px ${SANS}` }}>
               <option value="">Surface</option>
               {THEME_IDS.map((t) => (
                 <option key={t} value={t}>
@@ -316,7 +189,7 @@ function AreaList() {
 const AREA_COLORS = ['#a597c4', '#5ec4e8', '#e0584f', '#4fbf6a', '#e8c94a', '#c27ee8', '#ff9a5c'];
 
 function RoomInspector() {
-  const { state, roomById, colorOf, set, edit, place, unplace, deleteRoom } = useEditor();
+  const { state, roomById, colorOf, set, edit, place, unplace, deleteRoom, playFrom } = useEditor();
   const room = state.selRoom ? roomById[state.selRoom] : undefined;
   if (!room) return null;
   const links = sideLinks(state.rooms).filter((l) => l.a.id === room.id || l.b.id === room.id);
@@ -394,14 +267,11 @@ function RoomInspector() {
                   ))}
                 </select>
                 {spec?.kind === 'grey' && (
-                  <input
-                    aria-label="Opens on flag"
+                  <FlagField
+                    label="Opens on flag"
                     value={spec.flag ?? ''}
-                    onChange={(e) => {
-                      const flag = e.target.value;
-                      edit((s) => ({ doors: { ...s.doors, [l.key]: { kind: 'grey', flag } } }), `flag:${l.key}`);
-                    }}
-                    style={{ ...textInput, height: 24, width: 60, font: `400 11px ${MONO}`, padding: '0 4px' }}
+                    onChange={(flag) => edit((s) => ({ doors: { ...s.doors, [l.key]: { kind: 'grey', flag } } }), `flag:${l.key}`)}
+                    style={{ height: 24, width: 70, font: `400 11px ${MONO}`, padding: '0 4px' }}
                   />
                 )}
               </div>
@@ -459,9 +329,14 @@ function RoomInspector() {
           ))}
         </select>
       </div>
-      <button className="vw-btn-secondary" style={secondaryButton} onClick={() => set({ editRoom: room.id })}>
-        {room.tiles ? 'Edit tiles' : 'Paint tiles'}
-      </button>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button className="vw-btn-secondary" style={{ ...secondaryButton, flex: 1 }} onClick={() => set({ editRoom: room.id })}>
+          {room.tiles ? 'Edit tiles' : 'Paint tiles'}
+        </button>
+        <button className="vw-btn-secondary" style={{ ...secondaryButton, flex: 1 }} title="Playtest starting in this room (P)" onClick={() => playFrom(room.id)}>
+          Play from here
+        </button>
+      </div>
       <button style={dangerButton} onClick={() => deleteRoom(room.id)}>
         Delete room
       </button>

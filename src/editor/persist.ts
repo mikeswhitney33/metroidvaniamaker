@@ -28,19 +28,87 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   }
 }
 
-/** The autosaved project, or null when there is none or it can't be read. */
-export async function loadAutosave(): Promise<ProjectContent | null> {
+/** One project in this browser's list. */
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  savedAt: string;
+  rooms: number;
+}
+
+const INDEX = 'index';
+const CURRENT = 'current';
+const projectKey = (id: string) => `p:${id}`;
+
+export const newProjectId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+async function readIndex(): Promise<ProjectEntry[]> {
+  const v = await run<unknown>('readonly', (s) => s.get(INDEX));
+  return Array.isArray(v) ? (v as ProjectEntry[]) : [];
+}
+
+/** Projects saved in this browser, most recently saved first. */
+export async function listProjects(): Promise<ProjectEntry[]> {
   try {
-    const text = await run<unknown>('readonly', (s) => s.get(AUTOSAVE));
+    return (await readIndex()).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+  } catch {
+    return [];
+  }
+}
+
+export async function loadProject(id: string): Promise<ProjectContent | null> {
+  try {
+    const text = await run<unknown>('readonly', (s) => s.get(projectKey(id)));
     return typeof text === 'string' ? parseProject(text) : null;
   } catch {
     return null;
   }
 }
 
-export function saveAutosave(c: ProjectContent): Promise<void> {
-  const text = JSON.stringify(toProjectFile(c));
-  return run('readwrite', (s) => s.put(text, AUTOSAVE)).then(() => undefined);
+/**
+ * The project that was open last, by id. A single autosave from before projects had ids
+ * becomes the first entry in the list.
+ */
+export async function loadCurrent(): Promise<{ id: string; content: ProjectContent } | null> {
+  try {
+    const id = await run<unknown>('readonly', (s) => s.get(CURRENT));
+    if (typeof id === 'string') {
+      const content = await loadProject(id);
+      if (content) return { id, content };
+    }
+    const legacy = await run<unknown>('readonly', (s) => s.get(AUTOSAVE));
+    if (typeof legacy === 'string') {
+      const content = parseProject(legacy);
+      const nid = newProjectId();
+      await saveProject(nid, content);
+      await run('readwrite', (s) => s.delete(AUTOSAVE));
+      return { id: nid, content };
+    }
+    const list = await listProjects();
+    for (const p of list) {
+      const content = await loadProject(p.id);
+      if (content) return { id: p.id, content };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Saves the project under its id, marks it as the one open, and updates the list. */
+export async function saveProject(id: string, c: ProjectContent): Promise<void> {
+  const file = toProjectFile(c);
+  await run('readwrite', (s) => s.put(JSON.stringify(file), projectKey(id)));
+  const list = (await readIndex()).filter((p) => p.id !== id);
+  list.push({ id, name: c.name, savedAt: file.savedAt, rooms: c.rooms.length });
+  await run('readwrite', (s) => s.put(list, INDEX));
+  await run('readwrite', (s) => s.put(id, CURRENT));
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await run('readwrite', (s) => s.delete(projectKey(id)));
+  const list = (await readIndex()).filter((p) => p.id !== id);
+  await run('readwrite', (s) => s.put(list, INDEX));
 }
 
 /** Reference images the previous version kept in localStorage, so they carry into the first autosave. */

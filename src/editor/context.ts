@@ -46,6 +46,12 @@ export interface EditorApi {
   place(nodeId: string, roomId: string): void;
   unplace(nodeId: string): void;
   deleteRoom(roomId: string): void;
+  deleteRooms(roomIds: string[]): void;
+  /** Playtest from a room (at a tile in it, or its floor), carrying the loadout set in prefs. */
+  playFrom(roomId: string, at?: { x: number; y: number }): void;
+  /** Opens a project from this browser's list. */
+  openRecent(id: string): Promise<void>;
+  deleteRecent(id: string): Promise<void>;
   autoPlace(): void;
   /** Start a fresh playtest; `force` plays even with blocking issues. */
   playtest(force?: boolean): void;

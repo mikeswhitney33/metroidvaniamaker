@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { ENEMY_STATES, PLAYER_STATES } from '../../game/rig';
 import { BOSS_KINDS, ENEMY_ARCHETYPES } from '../../model/entities';
 import type { SpriteSheet } from '../../model/types';
@@ -209,6 +209,16 @@ export function SpritesTab() {
           </label>
         </div>
       )}
+      {img && (
+        <FrameGrid
+          src={img}
+          sheet={sheet ?? { image: slot, frameW: 16, frameH: 16, clips: {} }}
+          frames={clip?.frames ?? []}
+          onChange={(frames) =>
+            setSheet({ clips: { ...sheet?.clips, [clipName]: { fps: clip?.fps ?? 10, loop: clip?.loop ?? true, frames } } }, `clip:${char}:${clipName}`)
+          }
+        />
+      )}
       {sheet && img && clip && <Preview src={img} sheet={sheet} clip={clipName} />}
     </div>
   );
@@ -250,4 +260,83 @@ function Preview({ src, sheet, clip }: { src: string; sheet: SpriteSheet; clip: 
     return () => cancelAnimationFrame(raf);
   }, [src, sheet, clip]);
   return <canvas ref={ref} width={300} height={140} aria-label="Clip preview" style={{ width: '100%', height: 140, background: C.canvas, borderRadius: 6, border: `1px solid ${C.line}` }} />;
+}
+
+/** The sheet cut into its frame grid: click frames to add them to the clip in order, right-click to take one out. */
+function FrameGrid({ src, sheet, frames, onChange }: { src: string; sheet: SpriteSheet; frames: number[]; onChange(f: number[]): void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setDims({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = src;
+  }, [src]);
+  const cols = dims ? Math.max(1, Math.floor(dims.w / sheet.frameW)) : 1;
+  const rows = dims ? Math.max(1, Math.floor(dims.h / sheet.frameH)) : 1;
+  const scale = dims ? Math.max(1, Math.min(4, Math.floor(300 / dims.w))) : 1;
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx || !dims) return;
+    const img = new Image();
+    img.src = src;
+    const draw = () => {
+      c.width = dims.w * scale;
+      c.height = dims.h * scale;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const fw = sheet.frameW * scale;
+      const fh = sheet.frameH * scale;
+      ctx.strokeStyle = 'rgba(255,255,255,.25)';
+      for (let x = 0; x <= cols; x++) ctx.strokeRect(x * fw + 0.5, 0, 0, rows * fh);
+      for (let y = 0; y <= rows; y++) ctx.strokeRect(0, y * fh + 0.5, cols * fw, 0);
+      frames.forEach((f, i) => {
+        const x = (f % cols) * fw;
+        const y = Math.floor(f / cols) * fh;
+        ctx.strokeStyle = C.accent;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, fw - 2, fh - 2);
+        ctx.fillStyle = C.accent;
+        ctx.fillRect(x + 1, y + 1, 14, 12);
+        ctx.fillStyle = C.bar;
+        ctx.font = `700 9px ${MONO}`;
+        ctx.fillText(String(i + 1), x + 3, y + 10);
+      });
+    };
+    if (img.complete) draw();
+    else img.onload = draw;
+  }, [src, dims, sheet.frameW, sheet.frameH, frames, cols, rows, scale]);
+  const frameAt = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const b = e.currentTarget.getBoundingClientRect();
+    const x = Math.floor(((e.clientX - b.left) / b.width) * (dims?.w ?? 1) / sheet.frameW);
+    const y = Math.floor(((e.clientY - b.top) / b.height) * (dims?.h ?? 1) / sheet.frameH);
+    return x < cols && y < rows ? y * cols + x : -1;
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', font: `400 11.5px ${SANS}`, color: C.dim }}>
+        Click frames in order; right-click removes one
+        <button onClick={() => onChange([])} disabled={!frames.length} style={{ ...secondaryButton, height: 22, font: `500 11px ${SANS}` }}>
+          Clear
+        </button>
+      </div>
+      <div style={{ overflow: 'auto', maxHeight: 260, background: C.canvas, borderRadius: 6, border: `1px solid ${C.line}` }}>
+        <canvas
+          ref={ref}
+          aria-label="Sprite sheet frames"
+          onClick={(e) => {
+            const f = frameAt(e);
+            if (f >= 0) onChange([...frames, f]);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const f = frameAt(e);
+            const i = frames.lastIndexOf(f);
+            if (i >= 0) onChange(frames.filter((_, k) => k !== i));
+          }}
+          style={{ display: 'block', cursor: 'pointer', imageRendering: 'pixelated' }}
+        />
+      </div>
+    </div>
+  );
 }

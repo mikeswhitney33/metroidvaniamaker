@@ -11,6 +11,10 @@ export type Tool = 'select' | 'draw' | 'erase';
 export type Tab = 'graph' | 'rules' | 'style' | 'sprites' | 'validate';
 /** What the room painter places: tiles, or entities and item positions. */
 export type PaintLayer = 'tiles' | 'entities';
+/** How the tile painter lays tiles down. */
+export type PaintTool = 'brush' | 'rect' | 'frame' | 'line' | 'fill' | 'pick' | 'select';
+/** Items a "play from here" run starts with. */
+export type Loadout = 'route' | 'all' | 'none';
 export type Source = 'image' | 'tiled' | 'draw';
 
 export interface Draft {
@@ -37,6 +41,8 @@ export interface EditorState extends ProjectContent {
   tab: Tab;
   source: Source;
   selRoom: string | null;
+  /** Rooms selected together on the map; `selRoom` is the one the inspector shows. */
+  selRooms: string[];
   selNode: string | null;
   showItems: boolean;
   showRoute: boolean;
@@ -45,6 +51,11 @@ export interface EditorState extends ProjectContent {
   editRoom: string | null;
   paintTile: TileKind;
   paintLayer: PaintLayer;
+  paintTool: PaintTool;
+  /** Brush width in tiles. */
+  brush: number;
+  /** Painter pixels per tile, or null to fit the room to the window. */
+  paintZoom: number | null;
   /** Entity type the painter places, or a node id to position (`node:<id>`). */
   placing: string;
   selEntity: string | null;
@@ -65,6 +76,12 @@ export interface EditorState extends ProjectContent {
   prefs: Prefs;
   /** A saved run exists for this project, so Playtest can continue it. */
   hasRun: boolean;
+  /** Id of the project in this browser's project list. */
+  projectId: string;
+  /** Room to reopen in the painter when a "play from here" run ends. */
+  returnTo: string | null;
+  /** Import dialog (image trace, Tiled or LDtk) is open. */
+  importing: boolean;
 }
 
 export const initialState: EditorState = {
@@ -74,6 +91,7 @@ export const initialState: EditorState = {
   tab: 'graph',
   source: 'image',
   selRoom: null,
+  selRooms: [],
   selNode: 'grapple',
   showItems: true,
   showRoute: true,
@@ -81,6 +99,9 @@ export const initialState: EditorState = {
   editRoom: null,
   paintTile: Tile.Solid,
   paintLayer: 'tiles',
+  paintTool: 'brush',
+  brush: 1,
+  paintZoom: null,
   placing: 'enemy',
   selEntity: null,
   zoom: 24,
@@ -96,4 +117,13 @@ export const initialState: EditorState = {
   saveStatus: 'loading',
   prefs: loadPrefs(),
   hasRun: false,
+  projectId: '',
+  returnTo: null,
+  importing: false,
 };
+
+/** Rooms the map selection covers, the inspector's room included. */
+export function selectedRooms(s: Pick<EditorState, 'selRoom' | 'selRooms'>): string[] {
+  if (!s.selRoom) return [];
+  return s.selRooms.includes(s.selRoom) ? s.selRooms : [s.selRoom];
+}

@@ -214,6 +214,8 @@ function area(v: unknown): Area | null {
   const a: Area = { id: v.id, name: str(v.name, v.id), color: str(v.color, DEFAULT_AREA.color) };
   if (typeof v.style === 'string') a.style = v.style;
   if (typeof v.music === 'string') a.music = v.music;
+  if (typeof v.tileset === 'string') a.tileset = v.tileset;
+  if (typeof v.backdrop === 'string') a.backdrop = v.backdrop;
   return a;
 }
 

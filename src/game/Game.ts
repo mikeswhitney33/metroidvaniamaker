@@ -41,7 +41,9 @@ export interface GameOptions {
   damageScale?: number;
   /** Tone down screen flashes and shake. */
   reducedFlash?: boolean;
-  /** Images by slot id, for sprite sheets. */
+  /** Where to come back after dying when there's no save: a "play from here" start. */
+  retry?: RunData;
+  /** Images by slot id: sprite sheets, tilesets and backdrops. */
   images?: Record<string, HTMLImageElement>;
   sound?: Sound | null;
 }
@@ -81,7 +83,7 @@ export interface Banner {
 }
 
 const DROP_LIFE = 9;
-const ENEMY_COLORS: Record<string, string> = {
+export const ENEMY_COLORS: Record<string, string> = {
   crawler: '#d9824a',
   walker: '#b45ad9',
   hopper: '#6fd94a',
@@ -119,6 +121,8 @@ export class Game {
   shake = 0;
   time = 0;
   readonly animators: Record<string, Animator> = {};
+  /** Loaded project images by slot id: sprite sheets, tilesets and backdrops. */
+  readonly images: Record<string, HTMLImageElement>;
   readonly palette: StylePreset;
   private have: ReturnType<typeof runHave>;
   private readonly opts: GameOptions;
@@ -130,6 +134,7 @@ export class Game {
     this.events = events;
     this.opts = opts;
     this.palette = presetById(content.style);
+    this.images = opts.images ?? {};
     const byNode = indexNodes(content.nodes);
     this.level = new Level(content.rooms, content.doors, content.nodes, byNode, () => new Set(this.run?.keys ?? []));
     const st = content.nodes.find((n) => n.kind === 'start');
@@ -388,7 +393,8 @@ export class Game {
   /** Back to the last save after dying, or the start when there isn't one. */
   private reload() {
     const saved = this.opts.saveKey ? loadRun(this.opts.saveKey) : null;
-    this.run = saved ?? newRun(this.start.room, this.start.x, this.start.y);
+    const retry = !saved && this.opts.retry ? structuredClone(this.opts.retry) : null;
+    this.run = saved ?? retry ?? newRun(this.start.room, this.start.x, this.start.y);
     this.run.energy = runHave(this.content, this.run).maxEnergy;
     this.refresh();
     this.syncLevel();
@@ -397,7 +403,7 @@ export class Game {
     this.dying = 0;
     const r = this.level.byId.get(this.run.room) ?? this.room;
     this.enterRoom(r, true);
-    this.message(saved ? 'Continue' : 'Try again', saved ? 'Back at your last save.' : 'Back at the start.', '#dfe2e7');
+    this.message(saved ? 'Continue' : 'Try again', saved ? 'Back at your last save.' : retry ? 'Back where this test started.' : 'Back at the start.', '#dfe2e7');
   }
 
   // --- The step ------------------------------------------------------------------

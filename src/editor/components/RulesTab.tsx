@@ -28,7 +28,7 @@ export function RulesTab() {
       <div style={section}>
         <div style={sectionLabel}>Movement</div>
         {PHYSICS.map((p) => (
-          <label key={p.key} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 64px', alignItems: 'center', gap: 8, font: `400 12px ${SANS}`, color: C.muted }}>
+          <label key={p.key} style={{ display: 'grid', gridTemplateColumns: '104px minmax(0, 1fr) 66px', alignItems: 'center', gap: 8, font: `400 12px ${SANS}`, color: C.muted }}>
             {p.label}
             <input
               type="range"
@@ -37,9 +37,9 @@ export function RulesTab() {
               step={p.step}
               value={state.physics[p.key]}
               onChange={(e) => edit((s) => ({ physics: { ...s.physics, [p.key]: +e.target.value } }), `physics:${p.key}`)}
-              style={{ accentColor: C.accent }}
+              style={{ accentColor: C.accent, width: '100%', minWidth: 0, margin: 0 }}
             />
-            <span style={{ font: `400 11px ${MONO}`, color: C.textSoft, textAlign: 'right' }}>
+            <span style={{ font: `400 11px ${MONO}`, color: C.textSoft, textAlign: 'right', minWidth: 64, whiteSpace: 'nowrap' }}>
               {state.physics[p.key]} {p.unit}
             </span>
           </label>

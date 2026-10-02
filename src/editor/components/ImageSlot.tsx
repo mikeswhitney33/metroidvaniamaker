@@ -1,4 +1,5 @@
 import { useRef, useState, type DragEvent } from 'react';
+import type { ProjectContent } from '../../model/project';
 import { useEditor } from '../context';
 import { C, SANS } from '../ui';
 
@@ -6,7 +7,18 @@ import { C, SANS } from '../ui';
  * User-fillable image placeholder: drop an image on it or click to browse.
  * The chosen image is saved in the project under `id`, so it autosaves, undoes and exports with it.
  */
-export function ImageSlot({ id, placeholder, radius = 5 }: { id: string; placeholder: string; radius?: number }) {
+export function ImageSlot({
+  id,
+  placeholder,
+  radius = 5,
+  link,
+}: {
+  id: string;
+  placeholder: string;
+  radius?: number;
+  /** Other content to change in the same undo step when the image is set or cleared. */
+  link?: (present: boolean, s: ProjectContent) => Partial<ProjectContent>;
+}) {
   const { state, edit } = useEditor();
   const src = state.images[id] ?? null;
   const [over, setOver] = useState(false);
@@ -17,7 +29,7 @@ export function ImageSlot({ id, placeholder, radius = 5 }: { id: string; placeho
       const images = { ...s.images };
       if (dataUrl) images[id] = dataUrl;
       else delete images[id];
-      return { images };
+      return { images, ...link?.(!!dataUrl, s) };
     });
 
   const read = (file: File | undefined) => {
@@ -37,7 +49,7 @@ export function ImageSlot({ id, placeholder, radius = 5 }: { id: string; placeho
     <div
       role="button"
       tabIndex={0}
-      aria-label={src ? `${placeholder} reference image. Click to replace` : `Add ${placeholder} reference image`}
+      aria-label={src ? `${placeholder} image. Click to replace` : `Add ${placeholder} image`}
       onClick={() => input.current?.click()}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && input.current?.click()}
       onDragOver={(e) => {
@@ -66,7 +78,7 @@ export function ImageSlot({ id, placeholder, radius = 5 }: { id: string; placeho
     >
       {src ? (
         <>
-          <img src={src} alt={placeholder} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={src} alt={placeholder} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} />
           <button
             aria-label={`Clear ${placeholder} image`}
             onClick={(e) => {

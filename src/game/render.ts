@@ -6,6 +6,7 @@ import type { StylePreset } from '../model/types';
 import type { WorldRoom } from '../model/world';
 import type { Game } from './Game';
 import { drawBossRig, drawEnemyRig, drawPlayerRig, playerState } from './rig';
+import { drawTileset, tilesetOf, type Tileset } from './tileset';
 
 /** Tiles of the room visible top to bottom; the camera scrolls rooms taller or wider than the view. */
 export const VIEW_TILES_H = 18;
@@ -110,7 +111,8 @@ function roomLayer(game: Game, r: WorldRoom, P: StylePreset, s: number): HTMLCan
   if (typeof document === 'undefined') return null;
   let m = caches.get(game);
   if (!m) caches.set(game, (m = new Map()));
-  const key = `${s}|${P.id}|${game.level.stamp(r)}|${game.level.locked(r.id)}`;
+  const set = roomTileset(game, r);
+  const key = `${s}|${P.id}|${game.level.stamp(r)}|${game.level.locked(r.id)}|${set ? 'ts' : ''}`;
   const hit = m.get(r.id);
   if (hit?.key === key) return hit.canvas;
   const canvas = hit?.canvas ?? document.createElement('canvas');
@@ -119,9 +121,19 @@ function roomLayer(game: Game, r: WorldRoom, P: StylePreset, s: number): HTMLCan
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawTiles(ctx, (x, y) => game.level.tile(r.tx + x, r.ty + y), r.tw, P, s, 0, 0, 0, 0, r.tw, r.th, { liquids: false });
+  const at = (x: number, y: number) => game.level.tile(r.tx + x, r.ty + y);
+  if (set) drawTileset(ctx, at, r.tw, r.th, set, P, s, 0, 0, { liquids: false });
+  else drawTiles(ctx, at, r.tw, P, s, 0, 0, 0, 0, r.tw, r.th, { liquids: false });
   m.set(r.id, { key, canvas });
   return canvas;
+}
+
+const areaOf = (game: Game, r: WorldRoom) => game.content.areas.find((x) => x.id === r.area) ?? game.content.areas[0];
+
+/** The room's area tileset, once its image has loaded. */
+function roomTileset(game: Game, r: WorldRoom): Tileset | null {
+  const id = areaOf(game, r)?.tileset;
+  return id ? tilesetOf(game.images[id], parseInt(game.content.tile, 10) || 16) : null;
 }
 
 export function areaPalette(game: Game, r: WorldRoom): StylePreset {
@@ -170,13 +182,23 @@ export function drawGame(game: Game, c: HTMLCanvasElement, reduced: boolean) {
   ctx.clip();
   ctx.fillStyle = P.bg;
   ctx.fillRect(ox, oy, r.tw * s, r.th * s);
-  const R = rng(r.id.split('').reduce((a, ch2) => a * 31 + ch2.charCodeAt(0), 7) + r.tw);
   const px = (p.x - r.tx) * s * 0.25;
-  ctx.fillStyle = P.bg2;
-  for (let i = 0; i < r.tw / 2.5; i++) {
-    const w = s * (1 + R() * 2.5);
-    const h = r.th * s * (0.25 + R() * 0.7);
-    ctx.fillRect(ox + i * 2.5 * s * 1.3 + R() * s * 2 - px, oy + r.th * s - h, w, h);
+  const backdropId = areaOf(game, r)?.backdrop;
+  const bd = backdropId ? game.images[backdropId] : undefined;
+  if (bd?.complete && bd.naturalWidth) {
+    // The area's backdrop, scaled to the view's height and tiled sideways, scrolling slower than the room.
+    const h = Math.max(ch, r.th * s);
+    const w = (bd.naturalWidth * h) / bd.naturalHeight;
+    const start = ox - (((px % w) + w) % w);
+    for (let x = start; x < ox + r.tw * s; x += w) ctx.drawImage(bd, x, oy + r.th * s - h, w, h);
+  } else {
+    const R = rng(r.id.split('').reduce((a, ch2) => a * 31 + ch2.charCodeAt(0), 7) + r.tw);
+    ctx.fillStyle = P.bg2;
+    for (let i = 0; i < r.tw / 2.5; i++) {
+      const w = s * (1 + R() * 2.5);
+      const h = r.th * s * (0.25 + R() * 0.7);
+      ctx.fillRect(ox + i * 2.5 * s * 1.3 + R() * s * 2 - px, oy + r.th * s - h, w, h);
+    }
   }
   ctx.restore();
 
